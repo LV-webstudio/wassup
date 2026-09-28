@@ -1,0 +1,24 @@
+{
+  "name": "wassup",
+  "owner": {
+    "name": "LV-Webstudio (Speccy81)",
+    "url": "https://github.com/LV-webstudio/wassup"
+  },
+  "description": "Wassup: several Claude Code sessions on several machines working on one project without stepping on each other.",
+  "plugins": [
+    {
+      "name": "wassup",
+      "source": "./plugins/wassup",
+      "description": "Wassup (English): one writer per file, a direct channel over Remote Control and a numbered mailbox in a shared folder.",
+      "version": "0.5.0",
+      "category": "productivity"
+    },
+    {
+      "name": "wassup-es",
+      "source": "./plugins/wassup-es",
+      "description": "Wassup (español): un dueño por fichero, canal directo por Remote Control y buzón numerado en una carpeta compartida.",
+      "version": "0.5.0",
+      "category": "productivity"
+    }
+  ]
+}

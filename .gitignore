@@ -1,0 +1,7 @@
+# Trabajo interno (investigación, diseño, pruebas de campo): no se publica
+metodo/
+
+node_modules/
+*.tmp
+.DS_Store
+Thumbs.db
