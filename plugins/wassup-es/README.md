@@ -2,7 +2,7 @@
 
 ![Wassup: sesiones de Claude Code que se hablan entre ellas](https://raw.githubusercontent.com/LV-webstudio/wassup/main/assets/banner.jpg)
 
-*[Read in English](README.md)*
+*[Read in English](https://github.com/LV-webstudio/wassup/blob/main/README.md)*
 
 Una skill de Claude Code para que **varias sesiones de Claude Code en distintos equipos** (PC con Windows,
 Mac, Linux) trabajen en el mismo proyecto sin pisarse y se escriban entre ellas, **sin servidor**.
@@ -61,7 +61,7 @@ pequeños y legibles; nada está minificado ni se descarga:
 | `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse` | Ninguna |
 | `hooks/notify-windows.ps1` (PowerShell) | Solo si **tú** lo añades como hook `Notification` en tu configuración | Muestra un aviso local de Windows | Ninguna |
 
-Ninguno lee credenciales, secretos del entorno ni ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](PRIVACY.md).
+Ninguno lee credenciales, secretos del entorno ni ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
 
 ## Qué no es
 Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos de ficheros, un servidor de
@@ -69,4 +69,4 @@ mensajes con búsqueda u orquestación automática, mira los servidores de corre
 o las herramientas de orquestación; Wassup es la opción ligera para pocos equipos y con una persona al mando.
 
 ## Licencia
-MIT — ver [LICENSE](LICENSE). © 2026 LV-Webstudio (Speccy81).
+MIT — ver [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 LV-Webstudio (Speccy81).

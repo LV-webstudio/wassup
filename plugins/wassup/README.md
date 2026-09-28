@@ -2,7 +2,7 @@
 
 ![Wassup: Claude Code sessions that talk to each other](https://raw.githubusercontent.com/LV-webstudio/wassup/main/assets/banner.jpg)
 
-*[Leer en español](README.es.md)*
+*[Leer en español](https://github.com/LV-webstudio/wassup/blob/main/README.es.md)*
 
 A Claude Code skill that lets **several Claude Code sessions on different machines** (Windows PCs, Macs,
 Linux boxes) work on the same project without stepping on each other, and talk to each other — **with no
@@ -62,7 +62,7 @@ small, readable scripts; nothing is minified or downloaded:
 | `scripts/wassup.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash, under your normal permission prompts | Reads and writes the mailbox, status files and `wassup.json` **inside the folder you pass with `--root`**; with `--commit auto` it reads the current commit with `git rev-parse` | None |
 | `hooks/notify-windows.ps1` (PowerShell) | Only if **you** add it as a `Notification` hook in your own settings | Shows a local Windows desktop notification | None |
 
-Neither reads credentials, environment secrets or files outside the chosen folder. See also [PRIVACY.md](PRIVACY.md).
+Neither reads credentials, environment secrets or files outside the chosen folder. See also [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
 
 ## What it is not
 It is a working convention, not new technology. If you need file locks, a searchable message server or
@@ -70,4 +70,4 @@ automatic orchestration, look at MCP-based agent mail servers or orchestration t
 lightweight option for a few machines and a human in the loop.
 
 ## Licence
-MIT — see [LICENSE](LICENSE). © 2026 LV-Webstudio (Speccy81).
+MIT — see [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 LV-Webstudio (Speccy81).
