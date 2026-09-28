@@ -53,6 +53,17 @@ Then, in each Claude Code session, say **"wassup"** (or "read the mailbox", "tal
 Templates: `SYNC.md` (rules of the project), `MAILBOX.md`, `STATUS.md`, `SESSION-NOTES.md` (onboarding for a
 new session).
 
+## What code it runs
+Wassup has no MCP servers, no background processes and no hooks that turn on by themselves. It ships two
+small, readable scripts; nothing is minified or downloaded:
+
+| Script | When it runs | What it does | Network |
+|---|---|---|---|
+| `scripts/wassup.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash, under your normal permission prompts | Reads and writes the mailbox, status files and `wassup.json` **inside the folder you pass with `--root`**; with `--commit auto` it reads the current commit with `git rev-parse` | None |
+| `hooks/notify-windows.ps1` (PowerShell) | Only if **you** add it as a `Notification` hook in your own settings | Shows a local Windows desktop notification | None |
+
+Neither reads credentials, environment secrets or files outside the chosen folder. See also [PRIVACY.md](PRIVACY.md).
+
 ## What it is not
 It is a working convention, not new technology. If you need file locks, a searchable message server or
 automatic orchestration, look at MCP-based agent mail servers or orchestration tools; Wassup is the

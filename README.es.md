@@ -52,6 +52,17 @@ Después, en cada sesión de Claude Code, di **«wassup»** (o «lee el buzón»
 Plantillas: `SINCRONIZACION.md` (reglas del proyecto), `BUZON.md`, `ESTADO.md`, `NOTAS-SESION.md` (arranque
 de una sesión nueva).
 
+## Qué código ejecuta
+Wassup no tiene servidores MCP, ni procesos en segundo plano, ni hooks que se activen solos. Trae dos scripts
+pequeños y legibles; nada está minificado ni se descarga:
+
+| Script | Cuándo se ejecuta | Qué hace | Red |
+|---|---|---|---|
+| `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse` | Ninguna |
+| `hooks/notify-windows.ps1` (PowerShell) | Solo si **tú** lo añades como hook `Notification` en tu configuración | Muestra un aviso local de Windows | Ninguna |
+
+Ninguno lee credenciales, secretos del entorno ni ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](PRIVACY.md).
+
 ## Qué no es
 Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos de ficheros, un servidor de
 mensajes con búsqueda u orquestación automática, mira los servidores de correo entre agentes basados en MCP
