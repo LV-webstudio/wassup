@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.2 · 2026-09-29
+- Privacy notice (`PRIVACY.md`: Wassup collects no data) and support, documentation and privacy links in both plugin manifests.
+
 ## 0.5.1 · 2026-09-29
 - Plugin icon (`.claude-plugin/icon.png`, 512×512) and README banner (`assets/banner.jpg`).
 
