@@ -1,5 +1,7 @@
 # Wassup
 
+![Wassup: sesiones de Claude Code que se hablan entre ellas](assets/banner.jpg)
+
 *[Read in English](README.md)*
 
 Una skill de Claude Code para que **varias sesiones de Claude Code en distintos equipos** (PC con Windows,
@@ -19,7 +21,7 @@ Salió de un proyecto real: un PC con 8 GB de memoria programando y un Mac pasan
 pruebas de extremo a extremo que en el PC no cabía.
 
 ## Estado
-Versión 0.5.0 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
+Versión 0.5.1 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
 equipos** (Windows 11 + macOS 13), 15 pruebas automáticas.
 
 ## Instalación

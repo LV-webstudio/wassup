@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.1 · 2026-09-29
+- Plugin icon (`.claude-plugin/icon.png`, 512×512) and README banner (`assets/banner.jpg`).
+
 ## 0.5.0 · 2026-09-29
 - Packaged as a Claude Code plugin. This repository is its own marketplace (`wassup`) with two plugins:
   `wassup` (English) and `wassup-es` (Spanish).
