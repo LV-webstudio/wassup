@@ -126,3 +126,13 @@ test('línea de órdenes: log y report', () => {
   assert.match(w('log', '--root', root, '--me', 'mac', '--tipo', 'idea', '--texto', 'probar con persona@ejemplo.com'), /\[correo\]/);
   assert.match(w('report', '--root', root, '--retro'), /^ok · 1 · .*reporte-\d{4}-\d{2}-\d{2}\.md/);
 });
+
+test('singular y plural en el reporte; aviso de opt-in en el idioma del proyecto', () => {
+  const root = three();
+  logIncident({ root, me: 'mac', tipo: 'mensaje-perdido', texto: 'directo retenido', now: NOW });
+  const t = report({ root, now: NOW }).text;
+  assert.match(t, /· 1 incidencia · 1 sesión/);
+  assert.match(t, /Claude Code o el modelo: 1 incidencia de ese tipo/);
+  const off = three({ on: false });
+  assert.throws(() => logIncident({ root: off, me: 'mac', tipo: 'idea', texto: 'x' }), /Las incidencias están apagadas/);
+});

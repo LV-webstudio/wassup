@@ -275,3 +275,9 @@ test('--version coincide con la versión de los plugins', () => {
   const market = JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin', 'marketplace.json'), 'utf8'));
   for (const entry of market.plugins) assert.equal(entry.version, VERSION, entry.name);
 });
+
+test('sysctl en español: «used = 1568,25M» (coma decimal)', () => {
+  assert.equal(parseSwapUsage('vm.swapusage: total = 2048,00M  used = 1568,25M  free = 479,75M  (encrypted)'), 1.5);
+  assert.equal(parseSwapUsage('vm.swapusage: total = 4,00G  used = 1,25G  free = 2,75G'), 1.3);
+  assert.equal(parseSwapUsage('nada'), null);
+});

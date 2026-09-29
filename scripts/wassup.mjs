@@ -682,9 +682,12 @@ export function parseVmStat(text) {
 
 /** `sysctl vm.swapusage` (macOS): used, in GB. */
 export function parseSwapUsage(text) {
-  const m = /used = ([\d.]+)([MG])/.exec(text ?? '');
+  // The decimal mark follows the system language: «1536.00M» or «1568,25M».
+  const m = /used = ([\d.,]+)([MG])/.exec(text ?? '');
   if (!m) return null;
-  return Math.round((m[2] === 'G' ? Number(m[1]) : Number(m[1]) / 1024) * 10) / 10;
+  const x = Number(m[1].replace(',', '.'));
+  if (!Number.isFinite(x)) return null;
+  return Math.round((m[2] === 'G' ? x : x / 1024) * 10) / 10;
 }
 
 /** `pmset -g therm` (macOS): speed limit and warning level. */
@@ -1077,7 +1080,11 @@ export function logIncident({ root, me, tipo, texto, claudeCode, now = new Date(
   const cfg = loadConfig(root);
   if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
   if (cfg.incidencias !== true)
-    throw new WassupError('Incidents are off for this project (opt-in): the coordinator enables them with «config --incidents on».');
+    throw new WassupError(
+      cfg.lang === 'es'
+        ? 'Las incidencias están apagadas en este proyecto (opt-in): las enciende la coordinadora con «config --incidents on».'
+        : 'Incidents are off for this project (opt-in): the coordinator enables them with «config --incidents on».',
+    );
   if (!INCIDENT_TYPES.includes(tipo)) throw new WassupError(`--tipo: one of ${INCIDENT_TYPES.join(', ')}.`);
   const clean = scrub(texto);
   if (!clean) throw new WassupError('--texto: one sentence describing what happened.');
@@ -1179,7 +1186,13 @@ export function report({ root, desde, retro = false, issue = false, now = new Da
     ),
   );
   L.push('');
-  L.push(h(`- Periodo: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${all.length} incidencias · ${sessionsWithIncidents} sesiones`, `- Period: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${all.length} incidents · ${sessionsWithIncidents} sessions`));
+  const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  L.push(
+    h(
+      `- Periodo: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${pl(all.length, 'incidencia', 'incidencias')} · ${pl(sessionsWithIncidents, 'sesión', 'sesiones')}`,
+      `- Period: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${pl(all.length, 'incident', 'incidents')} · ${pl(sessionsWithIncidents, 'session', 'sessions')}`,
+    ),
+  );
   L.push(h('- Versiones de Wassup: ', '- Wassup versions: ') + (count((e) => e.wassup).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
   L.push(h('- Claude Code: ', '- Claude Code: ') + (count((e) => e.claudeCode ?? h('desconocida', 'unknown')).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
   L.push(h('- Sistemas: ', '- Systems: ') + (count((e) => e.so).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
@@ -1223,7 +1236,7 @@ export function report({ root, desde, retro = false, issue = false, now = new Da
   L.push(h('- Wassup: una *issue* en el repositorio de Wassup en GitHub (`w report --issue` deja el texto listo).', '- Wassup: an issue in the Wassup repository on GitHub (`w report --issue` prepares the text).'));
   L.push(
     product.length
-      ? h(`- Claude Code o el modelo: ${product.length} incidencias de ese tipo (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` o \`/bug\` en Claude Code.`, `- Claude Code or the model: ${product.length} such incidents (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` or \`/bug\` in Claude Code.`)
+      ? h(`- Claude Code o el modelo: ${pl(product.length, 'incidencia', 'incidencias')} de ese tipo (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` o \`/bug\` en Claude Code.`, `- Claude Code or the model: ${pl(product.length, 'such incident', 'such incidents')} (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` or \`/bug\` in Claude Code.`)
       : h('- Claude Code o el modelo: ninguna incidencia de ese tipo.', '- Claude Code or the model: no such incidents.'),
   );
   const text = L.join('\n') + '\n';
