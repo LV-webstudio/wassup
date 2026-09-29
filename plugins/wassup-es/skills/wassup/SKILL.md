@@ -197,7 +197,7 @@ que se va**:
   safari, cred:<proyecto>"`. Qué tiene tu equipo — navegadores o dispositivos de prueba, repositorios, **qué
   credenciales** (`cred:x` = «tengo la cuenta de servicio de x», nunca la cuenta). `status` las enseña y la
   coordinadora las usa para saber a quién puede pasar cada cosa.
-- **La coordinadora** (norma de Lorenzo, 29-09-2026): antes de hacer algo ella misma o de lanzar un agente
+- **La coordinadora** (norma del usuario, 29-09-2026): antes de hacer algo ella misma o de lanzar un agente
   propio, mira quién está «libre» y reparte. Encargo **portátil**: contexto, rutas compartidas (nunca rutas
   locales de un solo equipo), criterio de «hecho» y dónde dejar el resultado. **No se reparte** lo que toca
   producción y lanza el usuario, ni lo que necesita ficheros o credenciales que el otro equipo no tiene
