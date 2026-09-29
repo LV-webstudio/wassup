@@ -22,7 +22,7 @@ It came out of a real project: a PC with 8 GB of RAM writing code, and a Mac run
 test suite the PC could not fit in memory.
 
 ## Status
-Version 0.5.3 · packaged as a Claude Code plugin · field-tested with **three sessions on two machines**
+Version 0.6.0 · packaged as a Claude Code plugin · field-tested with **three sessions on two machines**
 (Windows 11 + macOS 13), 15 automated tests.
 
 ## Install
@@ -54,15 +54,16 @@ Templates: `SYNC.md` (rules of the project), `MAILBOX.md`, `STATUS.md`, `SESSION
 new session).
 
 ## What code it runs
-Wassup has no MCP servers, no background processes and no hooks that turn on by themselves. It ships two
+Wassup has no MCP servers, no background processes and no hooks that turn on by themselves. It ships three
 small, readable scripts; nothing is minified or downloaded:
 
 | Script | When it runs | What it does | Network |
 |---|---|---|---|
 | `scripts/wassup.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash, under your normal permission prompts | Reads and writes the mailbox, status files and `wassup.json` **inside the folder you pass with `--root`**; with `--commit auto` it reads the current commit with `git rev-parse` | None |
+| `scripts/despertar.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash (wake mode, §7 bis) | Reads your local conversation files in `~/.claude/projects/` **only to find** the session with that name and its folder (nothing is copied or sent), then opens a new console running `claude --resume <id>` with the `CLAUDE_*` variables removed | None |
 | `hooks/notify-windows.ps1` (PowerShell) | Only if **you** add it as a `Notification` hook in your own settings | Shows a local Windows desktop notification | None |
 
-Neither reads credentials, environment secrets or files outside the chosen folder. See also [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
+None reads credentials or environment secrets; apart from `despertar.mjs` finding a session in your own conversation files, none reads files outside the chosen folder. See also [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
 
 ## What it is not
 It is a working convention, not new technology. If you need file locks, a searchable message server or

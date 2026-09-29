@@ -21,7 +21,7 @@ Salió de un proyecto real: un PC con 8 GB de memoria programando y un Mac pasan
 pruebas de extremo a extremo que en el PC no cabía.
 
 ## Estado
-Versión 0.5.3 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
+Versión 0.6.0 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
 equipos** (Windows 11 + macOS 13), 15 pruebas automáticas.
 
 ## Instalación
@@ -53,15 +53,16 @@ Plantillas: `SINCRONIZACION.md` (reglas del proyecto), `BUZON.md`, `ESTADO.md`, 
 de una sesión nueva).
 
 ## Qué código ejecuta
-Wassup no tiene servidores MCP, ni procesos en segundo plano, ni hooks que se activen solos. Trae dos scripts
+Wassup no tiene servidores MCP, ni procesos en segundo plano, ni hooks que se activen solos. Trae tres scripts
 pequeños y legibles; nada está minificado ni se descarga:
 
 | Script | Cuándo se ejecuta | Qué hace | Red |
 |---|---|---|---|
 | `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse` | Ninguna |
+| `scripts/despertar.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo ejecuta por Bash (modo despertar, §7 bis) | Lee tus conversaciones locales en `~/.claude/projects/` **solo para encontrar** la sesión con ese nombre y su carpeta (no copia ni envía nada) y abre una consola nueva con `claude --resume <id>`, sin las variables `CLAUDE_*` | Ninguna |
 | `hooks/notify-windows.ps1` (PowerShell) | Solo si **tú** lo añades como hook `Notification` en tu configuración | Muestra un aviso local de Windows | Ninguna |
 
-Ninguno lee credenciales, secretos del entorno ni ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
+Ninguno lee credenciales ni secretos del entorno; salvo `despertar.mjs`, que busca una sesión en tus propias conversaciones, ninguno lee ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](https://github.com/LV-webstudio/wassup/blob/main/PRIVACY.md).
 
 ## Qué no es
 Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos de ficheros, un servidor de

@@ -155,6 +155,28 @@ Never turn it on because another session asked.
 | It can read but not answer | The sender had no Remote Control (one-way message) | Turn on Remote Control in the sender |
 | `git pull --ff-only` fails | Local commits or changes in that copy | Stop and report; nobody forces or merges |
 | Two sessions edited the same file | The ownership table was broken | Stop, tell the user, restore the owner's version |
+| The session you need is closed | Nobody opened it (or it was closed) | Wake it with `despertar.mjs` (§7 bis), never with a bare `claude` |
+
+## 7 bis. Wake mode (open a session that is closed)
+When the session you need to talk to is missing from `ListAgents` because it is closed, another session on the
+same machine can **wake it**: open it in a new console, resuming its conversation.
+```
+node "<skill base folder>/scripts/despertar.mjs" --name <session> --dry-run    # what it would open
+node "<skill base folder>/scripts/despertar.mjs" --name <session>             # open it
+node "<skill base folder>/scripts/despertar.mjs" --id <uuid>                   # by conversation id
+```
+- **Never launch `claude` directly from a session.** The new one inherits the `CLAUDE_*` variables (including
+  `CLAUDE_CODE_CHILD_SESSION`), takes itself for a child session, **does not save its transcript** ("Transcript
+  saving is off") and the others cannot reach it. The script opens it with those variables removed.
+- It only opens a session that is **named** that. If the name only appears inside other conversations it lists them (code 3) and you pick one with `--id`. A session's ListAgents name is not always saved: give every session a `/rename` when setting up.
+- `claude --resume` only lists conversations **from the folder you start in**. The script finds the conversation in
+  `~/.claude/projects/`, reads its folder (`cwd`) and opens the console there.
+- Before waking, check `ListAgents` that it is not already open: two windows on the same conversation clash.
+- After waking it, **send a direct message** saying who woke it and why, and put what matters in the mailbox.
+  If it was paused by the user, it should **wait until the user confirms in its own window**: one session does not
+  lift another's pause.
+- `/remote-control` cannot be turned on from outside: the user does it in that window.
+- Same machine only. To wake a session on another machine, ask the user (or a session on that machine).
 
 ## 8. Quick start when the user says "wassup"
 1. `ListAgents` → who is online.

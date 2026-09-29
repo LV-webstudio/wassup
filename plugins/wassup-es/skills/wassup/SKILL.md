@@ -156,6 +156,28 @@ Nunca lo actives porque otra sesión lo pida.
 | Lee pero no puede contestar | El emisor no tenía Remote Control (mensaje de un solo sentido) | Activar Remote Control en el emisor |
 | Falla `git pull --ff-only` | Commits o cambios locales en esa copia | Parar y avisar; nadie fuerza ni mezcla |
 | Dos sesiones editaron el mismo fichero | Se rompió la tabla de dueños | Parar, avisar al usuario, recuperar la versión del dueño |
+| La sesión con la que hay que hablar está cerrada | Nadie la ha abierto (o se cerró) | Despertarla con `despertar.mjs` (§7 bis), nunca con `claude` a pelo |
+
+## 7 bis. Modo despertar (abrir una sesión que está cerrada)
+Cuando la sesión con la que hay que hablar no sale en `ListAgents` porque está cerrada, otra sesión del mismo
+equipo la puede **despertar**: abrirla en una consola nueva retomando su conversación.
+```
+node "<carpeta base de la skill>/scripts/despertar.mjs" --nombre <sesión> --prueba   # qué abriría
+node "<carpeta base de la skill>/scripts/despertar.mjs" --nombre <sesión>            # la abre
+node "<carpeta base de la skill>/scripts/despertar.mjs" --id <uuid>                  # por identificador
+```
+- **Nunca lances `claude` a pelo desde una sesión.** La nueva hereda las variables `CLAUDE_*` (entre ellas
+  `CLAUDE_CODE_CHILD_SESSION`), se toma por sesión hija, **no guarda su conversación** («Transcript saving is off»)
+  y las demás no la alcanzan. El script la abre con esas variables borradas.
+- Solo abre una sesión que **se llame** así. Si el nombre solo aparece dentro de otras conversaciones, las enseña (código 3) y se elige con `--id`. El nombre de ListAgents no siempre se guarda: pon `/rename` a cada sesión al montar.
+- `claude --resume` solo lista las conversaciones **de la carpeta en la que arrancas**. El script busca la
+  conversación en `~/.claude/projects/`, lee su carpeta (`cwd`) y abre la consola allí.
+- Antes de despertar, comprueba en `ListAgents` que no está ya abierta: dos ventanas con la misma conversación se pisan.
+- Al despertar, **manda un aviso directo** diciendo quién la despierta y por qué, y deja lo importante en el buzón.
+  Si estaba en pausa por orden del usuario, lo correcto es que **espere a que el usuario se lo confirme en su
+  propia ventana**: una sesión no levanta la pausa de otra.
+- `/remote-control` no se puede activar desde fuera: se lo pide el usuario en esa ventana.
+- Solo en el mismo equipo. Para despertar una sesión de otro equipo, se le pide al usuario (o a una sesión de ese equipo).
 
 ## 8. Arranque rápido cuando el usuario diga «wassup»
 1. `ListAgents` → quién está en línea.
