@@ -133,7 +133,11 @@ Qué haces tú:
 3. `avisa a la persona`: díselo al usuario en una línea (quién, qué número, cuánto tiempo lleva).
 4. Después, **siempre** `remind --mark <otra>#<n> --level <k>` (en `reminders-<yo>.json`, solo lo escribes
    tú) para no repetir el aviso. Al contestar a otra, usa `send --re <n>` para que su recordatorio pare.
-5. Mensajes viejos contestados «de palabra» (sin `re`): ciérralos con `--mark <otra>#<n> --level 3`.
+5. Mensajes viejos contestados «de palabra» (sin `re`): ciérralos con `--mark <otra>#<n> --level 3`; al pasar un
+   buzón anterior a 0.7, `remind --me <yo> --close-all` los cierra todos de una vez. «Espero de ti: nada» no pide respuesta.
+6. El nombre de una sesión en ListAgents **cambia según el equipo** (en el suyo, el de `/rename`; por Remote Control,
+   el título). Pon los dos en tu `init --agent "<nombre local> | <título en Remote Control>"`; al avisar, usa el que
+   veas en tu ListAgents.
 
 ## 4. Cuándo leer (sin esperar al usuario)
 - Al **empezar cada tarea** y **antes de cada `git pull`**: los demás buzones (lo nuevo desde tu «Leído

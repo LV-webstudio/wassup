@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 · 2026-09-29
+- Found by a second session on the first real run: "I expect from you: nothing" no longer counts as a request;
+  `remind --close-all` closes everything pending when moving a mailbox from before 0.7 (answers there did not
+  quote the number); `--agent` accepts several names separated by `|`, because a session's ListAgents name
+  depends on the machine (its `/rename` name locally, its title over Remote Control).
+
 ## 0.7.0 · 2026-09-29
 - **Reminders by waiting time × workload** (`wassup.mjs remind`, SKILL §3c / §3 ter). A message is pending
   until the recipient **answers** it (when it carries "I expect from you") or **reads** it (when it does not).

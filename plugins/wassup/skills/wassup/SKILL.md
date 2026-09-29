@@ -130,7 +130,11 @@ What you do:
 3. `tell the person`: tell the user in one line (who, which number, how long it has waited).
 4. Then **always** `remind --mark <other>#<n> --level <k>` (in `reminders-<me>.json`, only you write it) so
    the notice is not repeated. When you answer someone, use `send --re <n>` so their reminder stops.
-5. Old messages answered informally (without `re`): close them with `--mark <other>#<n> --level 3`.
+5. Old messages answered informally (without `re`): close them with `--mark <other>#<n> --level 3`; when moving a
+   mailbox from before 0.7, `remind --me <me> --close-all` closes them all at once. "I expect from you: nothing" asks for no answer.
+6. A session's name in ListAgents **depends on the machine** (on its own, the `/rename` name; over Remote Control,
+   the title). Put both in your `init --agent "<local name> | <Remote Control title>"`; when notifying, use the one
+   you see in your ListAgents.
 
 ## 4. When to read (without waiting for the user)
 - At the **start of every task** and **before every `git pull`**: the other mailboxes (what is new since

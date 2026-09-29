@@ -5,7 +5,7 @@
 // The script numbers messages and works out what is unread; Claude writes the words.
 // Each session only ever writes its own files (mailbox/<name>.md, STATUS-<name>.md): the golden rule.
 //
-//   node wassup.mjs init     --root <shared> --name <me> [--lang es|en] [--agent "<name in ListAgents>"]
+//   node wassup.mjs init     --root <shared> --name <me> [--lang es|en] [--agent "<name in ListAgents>[ | <name on another machine>]"]
 //                            (the first init creates wassup.json and makes that session the coordinator)
 //   node wassup.mjs register --root <shared> --by <coordinator> --name <new session>
 //   node wassup.mjs send     --root <shared> --from <me> --to <a,b|all> --subject "…"
@@ -14,7 +14,7 @@
 //   node wassup.mjs wait     --root <shared> --me <me> [--timeout <s>] [--interval <s>]
 //   node wassup.mjs ack      --root <shared> --me <me> (--all | --from <other> --upto <n>)
 //   node wassup.mjs status   --root <shared> [--json]
-//   node wassup.mjs remind   --root <shared> --me <me> [--json] [--mark <to>#<n> --level <k>]
+//   node wassup.mjs remind   --root <shared> --me <me> [--json] [--mark <to>#<n> --level <k> | --close-all]
 //   node wassup.mjs config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,6 +44,7 @@ const TEXT = {
   },
 };
 const ALL = new Set(['all', 'todas', 'todos', '*']);
+const NOTHING = /^\s*(?:nada|ninguna?|nothing|none|n\/a|—|-)(?=[\s.,;:]|$)/i;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
 export class WassupError extends Error {}
@@ -75,7 +76,9 @@ export function parseMailbox(text) {
     const end = i + 1 < heads.length ? heads[i + 1].index : text.length;
     const block = text.slice(m.index + m[0].length, end).replace(/\n---\s*$/, '').trim();
     const subject = (block.match(/^\*\*(?:Asunto|Subject):\*\* (.+)$/m) ?? [])[1] ?? '';
-    const expect = (block.match(/^\*\*(?:Espero de ti|I expect from you):\*\* (.+)$/m) ?? [])[1] ?? '';
+    const rawExpect = (block.match(/^\*\*(?:Espero de ti|I expect from you):\*\* (.+)$/m) ?? [])[1] ?? '';
+    // «Espero de ti: nada» is not a request (no answer is needed, reading is enough).
+    const expect = NOTHING.test(rawExpect) ? '' : rawExpect;
     out.push({
       re: replyNumbers(block),
       n: Number(m[1]),
@@ -444,6 +447,28 @@ export function markReminded({ root, me, key, level }) {
   return given;
 }
 
+/**
+ * Migration to reminders: closes (notice 3 given) everything pending right now, due or not. For mailboxes
+ * written before 0.7, where answers did not quote the number. Only writes reminders-<me>.json.
+ */
+export function closeAll({ root, me }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  const boxes = allMailboxes(root, cfg);
+  const given = loadReminded(root, me);
+  let closed = 0;
+  for (const m of boxes[me].messages) {
+    const recipients = m.to.some((y) => ALL.has(y)) ? cfg.sessions.filter((s) => s !== me) : m.to;
+    for (const x of recipients) {
+      if (!boxes[x] || !isPending(boxes, me, m, x) || given[`${x}#${m.n}`] === 3) continue;
+      given[`${x}#${m.n}`] = 3;
+      closed++;
+    }
+  }
+  writeAtomic(remindFile(root, me), JSON.stringify(given, null, 2) + '\n');
+  return closed;
+}
+
 /** The coordinator (only writer of wassup.json) sets the reminder mode and times. */
 export function configure({ root, by, mode, base, max }) {
   const cfgFile = path.join(root, 'wassup.json');
@@ -492,6 +517,7 @@ const HELP = `wassup.mjs — mailbox helper for Wassup (one writer per file)
   status   --root <shared> [--json]
   remind   --root <shared> --me <me> [--json]               reminders due now (waiting time × recipient load)
   remind   --root <shared> --me <me> --mark <to>#<n> --level <1|2|3>   note a notice as given
+  remind   --root <shared> --me <me> --close-all             close everything pending now (migrating an old mailbox)
   config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
 «Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.
 send --re 4,6 marks the message as the answer to #4 and #6 of the recipient (stops their reminders).`;
@@ -556,6 +582,7 @@ async function main(argv) {
     }
     case 'remind': {
       const cfg = loadConfig(root);
+      if (a['close-all']) return console.log(`ok · ${closeAll({ root, me: a.me })}`);
       if (a.mark) {
         const r = markReminded({ root, me: a.me, key: a.mark, level: a.level });
         return console.log(`ok · ${Object.entries(r).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}`);

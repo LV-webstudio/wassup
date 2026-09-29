@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ack, configure, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
+import { ack, closeAll, configure, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-'));
@@ -253,4 +253,17 @@ test('recordatorios: fechas del buzón escritas a mano (dd/mm/aaaa hh:mm)', () =
   assert.deepEqual(parseStamp('29/09/2026 06:25'), new Date(2026, 8, 29, 6, 25));
   assert.deepEqual(parseStamp('2026-09-29 07:23'), new Date(2026, 8, 29, 7, 23));
   assert.equal(parseStamp('ayer'), null);
+});
+
+test('recordatorios: «Espero de ti: nada» no pide respuesta; --close-all migra un buzón viejo', () => {
+  const root = three();
+  send({ root, from: 'pc', to: 'mac', subject: 'Info', body: 'x', expect: 'nada; avisa si cambia', now: NOW });
+  assert.equal(parseMailbox(fs.readFileSync(path.join(root, 'buzon', 'pc.md'), 'utf8'))[0].expect, '');
+  assert.equal(remind({ root, me: 'pc', now: minutos(NOW, 200) })[0].needs, 'read');
+  send({ root, from: 'pc', to: 'mac', subject: 'Viejo', body: 'x', expect: 'algo', now: NOW });
+  assert.equal(closeAll({ root, me: 'pc' }), 2);
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 5000) }), []);
+  // Lo que se envíe después sí se recuerda.
+  send({ root, from: 'pc', to: 'mac', subject: 'Nuevo', body: 'x', expect: 'algo', now: minutos(NOW, 5000) });
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 5200) }).map((r) => r.n), [3]);
 });
