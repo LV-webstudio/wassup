@@ -58,7 +58,7 @@ pequeños y legibles; nada está minificado ni se descarga:
 
 | Script | Cuándo se ejecuta | Qué hace | Red |
 |---|---|---|---|
-| `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse` | Ninguna |
+| `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse`; `health` lanza órdenes del sistema de solo lectura (`vm_stat`, `sysctl`, `pmset` en macOS · una consulta CIM de PowerShell en Windows · `/proc` en Linux · `docker info` si hay Docker), nunca con permisos elevados, y escribe `salud-<yo>.json` solo con cifras (sin procesos, rutas ni usuarios; el equipo es un resumen corto de su nombre) | Ninguna |
 | `scripts/despertar.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo ejecuta por Bash (modo despertar, §7 bis) | Lee tus conversaciones locales en `~/.claude/projects/` **solo para encontrar** la sesión con ese nombre y su carpeta (no copia ni envía nada) y abre una consola nueva con `claude --resume <id>`, sin las variables `CLAUDE_*` | Ninguna |
 | `hooks/notify-windows.ps1` (PowerShell) | Solo si **tú** lo añades como hook `Notification` en tu configuración | Muestra un aviso local de Windows | Ninguna |
 

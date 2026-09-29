@@ -193,29 +193,40 @@ que se va**:
 ## 5 bis. Reparto, «libre» y recursos (la coordinadora no trabaja mientras las demás miran)
 - **«libre»:** al terminar un encargo, escribe el resultado y la palabra **«libre»** en tu buzón y avisa por el
   directo. Así nadie tiene que decir «el Mac está parado».
-- **Capacidades** (una línea en tu propio buzón, junto a `--agent`, y al día): qué tiene tu equipo — RAM y
-  núcleos, navegadores o dispositivos de prueba, repositorios, **qué credenciales** (solo «tiene la cuenta de
-  servicio de X», nunca la cuenta). Con eso la coordinadora sabe a quién puede pasar cada cosa.
+- **Capacidades** (una línea en tu propio buzón, al día): `w init --root … --name <yo> --caps "playwright,
+  safari, cred:<proyecto>"`. Qué tiene tu equipo — navegadores o dispositivos de prueba, repositorios, **qué
+  credenciales** (`cred:x` = «tengo la cuenta de servicio de x», nunca la cuenta). `status` las enseña y la
+  coordinadora las usa para saber a quién puede pasar cada cosa.
 - **La coordinadora** (norma de Lorenzo, 29-09-2026): antes de hacer algo ella misma o de lanzar un agente
   propio, mira quién está «libre» y reparte. Encargo **portátil**: contexto, rutas compartidas (nunca rutas
   locales de un solo equipo), criterio de «hecho» y dónde dejar el resultado. **No se reparte** lo que toca
   producción y lanza el usuario, ni lo que necesita ficheros o credenciales que el otro equipo no tiene
   (repartirlo sería saltarse permisos).
-- **Recursos, antes de algo pesado** (build, batería e2e, `npm ci`, oleada de agentes, despliegue): mira la
-  memoria **disponible** y el disco.
-  - macOS: `vm_stat` (libre + inactiva + especulativa + purgable, × tamaño de página). ⚠ `os.freemem()` no
-    sirve en macOS: da mucho menos de lo que hay.
-  - Windows: `Get-CimInstance Win32_OperatingSystem` → `FreePhysicalMemory`. Linux: `MemAvailable` en
-    `/proc/meminfo`. Disco: `df -h` o `Get-PSDrive`, del repo **y** de la carpeta compartida.
-  - Con **menos de 1 GB** disponible, o disco por debajo de 5 GB (repo) o 2 GB (compartida), estás
-    **saturada**: no lances nada pesado nuevo; deja terminar lo que corre y manda a la coordinadora
-    `[recursos] saturado: <motivo>` con «Espero de ti: reparto o espera» (un solo aviso por episodio, y
-    `[recursos] ok` al recuperarte). Entre 1 y 2 GB, lánzalo solo si es lo único pesado en ese equipo.
-  - Dos sesiones en el mismo equipo miden lo mismo: avisa solo una.
+- **Recursos: `w health --root … --me <yo>`** al empezar cada encargo (junto a `remind`), **antes de algo
+  pesado** (build, batería e2e, `npm ci`, oleada de agentes, despliegue) y al terminar un encargo largo.
+  - Mide RAM **disponible** (en macOS con `vm_stat`: `os.freemem()` da mucho menos de lo que hay), swap,
+    carga por núcleo, disco del repo **y** de la carpeta compartida, temperatura (si se puede leer sin
+    permisos; si no, «desconocida») y la VM de Docker. Escribe `salud-<yo>.json` (solo cifras: sin procesos,
+    rutas ni usuarios) y sale con **0 ok · 1 justo · 2 saturado**.
+  - Estados: **saturado** con < 1 GB disponible, carga > 1,5 por núcleo, disco < 5 GB (repo) o < 2 GB
+    (compartida) o aviso térmico; **justo** con < 2 GB, carga > 1 o CPU limitada. Cambia solo cuando **dos
+    muestras seguidas** coinciden (un pico de un build no avisa). Umbrales: la coordinadora, con
+    `w config --ram-min --ram-tight --load-max --disk-repo-min --disk-shared-min --free-remind`.
+  - Al entrar en «saturado», **el propio `health` manda** a la coordinadora `[recursos] saturado: <motivo>`
+    («Espero de ti: reparto o espera»), una vez por episodio y por equipo (dos sesiones en el mismo equipo no
+    avisan dos veces), y `[recursos] ok` al recuperarse.
+  - Saturada: no lances nada pesado nuevo (`w health --quiet || …`); deja terminar lo que corre. Justa:
+    lánzalo solo si es lo único pesado en ese equipo. Marca lo pesado con `--busy "batería e2e, ~20 min"
+    --needs playwright` (y `--busy ""` al acabar); `--watch 60` repite mientras dure.
   - **Nunca** cierres programas del usuario ni mates procesos de otras sesiones, ni se lo pidas a otra: si hay
     que liberar memoria, díselo al usuario con la orden concreta.
-- El comando `w health` (medición automática, `salud-<yo>.json`, estados con histéresis y columna en
-  `status`) llegará en la 0.9.0; hasta entonces, esto se hace a mano.
+- **La coordinadora**, con `w status` (estado, «libre N min», RAM, disco compartido, lo pesado en curso y
+  capacidades de cada una) y `w remind`: «libre y con recursos» (una sesión lleva `--free-remind` minutos libre
+  y en ok: dale algo o confirma que espere) y «desequilibrio» (una saturada con algo pesado y otra libre con
+  las capacidades que pide `--needs`: propón moverlo). Un despliegue o algo de producción **nunca** se propone
+  mover. Cada aviso se marca con `w remind --mark <clave>` (la clave sale en la línea).
+- «libre» lo deduce `health` de tu último mensaje (la palabra «libre»); un encargo nuevo sin contestar lo
+  quita. Una sesión saturada tiene el doble de paciencia en los recordatorios.
 
 ## 6. Protecciones
 - Árbol limpio antes de cada pull (`git status`); si hay cambios, se avisa, no se descartan.

@@ -16,6 +16,8 @@
 //   node wassup.mjs status   --root <shared> [--json]
 //   node wassup.mjs remind   --root <shared> --me <me> [--json] [--mark <to>#<n> --level <k> | --close-all]
 //   node wassup.mjs config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
+//   node wassup.mjs health   --root <shared> --me <me> [--busy "<heavy job>" [--needs a,b]] [--json] [--quiet] [--watch <s>]
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -29,7 +31,9 @@ const TEXT = {
     statusHead: (n) => `# Estado de ${n}\nActualizado: — · Commit probado: —\n\n## Resultado\n| Prueba / tarea | Resultado | Detalle |\n|---|---|---|\n`,
     none: 'Nada sin leer.', unreadFrom: (o, k) => `${o}: ${k} sin leer`, expects: 'espera de ti',
     agent: 'Sesión de Claude Code', timeout: 'Nada nuevo en el tiempo de espera.',
-    reply: 'En respuesta a', noReminders: 'Nada que recordar.',
+    reply: 'En respuesta a', noReminders: 'Nada que recordar.', caps: 'Capacidades', health: 'salud',
+    free: (r) => `${r.to} · libre ${r.freeMin} min y con recursos${r.ramGB != null ? ` (RAM ${String(r.ramGB).replace('.', ',')} GB)` : ''} → asígnale algo o confirma que espere${r.agent ? ` (${r.agent})` : ''}`,
+    imbalance: (r) => `desequilibrio: ${r.from} SATURADO con «${r.job}» → ${r.to} libre${r.ramGB != null ? `, ${String(r.ramGB).replace('.', ',')} GB` : ''}: propón moverlo${r.agent ? ` (${r.agent})` : ''}`,
     noAssist: (l) => `Nadie necesita ayuda ahora (tu carga: ${l}).`,
     assistOffer: (o) => `${o.to} · carga ${o.load} → ofrécele ayuda${o.agent ? ` (${o.agent})` : ''}`,
     reminder: (r) => `${r.to} · #${r.n} ${r.subject} · esperando ${r.waitedMin} min (carga ${r.load}, umbral ${r.thresholdMin} min) · aviso ${r.level} → ${r.action === 'user' ? 'avisa a la persona' : 'recordatorio directo'}${r.agent ? ` (${r.agent})` : ''}`,
@@ -41,7 +45,9 @@ const TEXT = {
     statusHead: (n) => `# Status of ${n}\nUpdated: — · Commit tested: —\n\n## Result\n| Test / task | Result | Detail |\n|---|---|---|\n`,
     none: 'Nothing unread.', unreadFrom: (o, k) => `${o}: ${k} unread`, expects: 'expects from you',
     agent: 'Claude Code session', timeout: 'Nothing new within the timeout.',
-    reply: 'In reply to', noReminders: 'Nothing to remind.',
+    reply: 'In reply to', noReminders: 'Nothing to remind.', caps: 'Capabilities', health: 'health',
+    free: (r) => `${r.to} · free for ${r.freeMin} min with resources${r.ramGB != null ? ` (RAM ${r.ramGB} GB)` : ''} → give it something or confirm it should wait${r.agent ? ` (${r.agent})` : ''}`,
+    imbalance: (r) => `imbalance: ${r.from} SATURATED with «${r.job}» → ${r.to} is free${r.ramGB != null ? `, ${r.ramGB} GB` : ''}: suggest moving it${r.agent ? ` (${r.agent})` : ''}`,
     noAssist: (l) => `Nobody needs help right now (your load: ${l}).`,
     assistOffer: (o) => `${o.to} · load ${o.load} → offer help${o.agent ? ` (${o.agent})` : ''}`,
     reminder: (r) => `${r.to} · #${r.n} ${r.subject} · waiting ${r.waitedMin} min (load ${r.load}, threshold ${r.thresholdMin} min) · notice ${r.level} → ${r.action === 'user' ? 'tell the person' : 'direct reminder'}${r.agent ? ` (${r.agent})` : ''}`,
@@ -50,6 +56,7 @@ const TEXT = {
 const ALL = new Set(['all', 'todas', 'todos', '*']);
 const NOTHING = /^\s*(?:nada|ninguna?|nothing|none|n\/a|—|-)(?=[\s.,;:]|$)/i;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+export const VERSION = '0.9.0';
 
 export class WassupError extends Error {}
 
@@ -138,7 +145,7 @@ function setAcks(text, cfg, acks) {
  * Prepares MY files. The first init creates wassup.json and that session becomes the coordinator: from then
  * on only the coordinator adds sessions (`register`), so wassup.json keeps a single writer.
  */
-export function init({ root, name, lang = 'es', agent }) {
+export function init({ root, name, lang = 'es', agent, caps }) {
   if (!NAME.test(name ?? '')) throw new WassupError('--name: lowercase letters, digits, - or _ (max 32).');
   if (!TEXT[lang]) throw new WassupError('--lang: es or en.');
   fs.mkdirSync(root, { recursive: true });
@@ -163,6 +170,7 @@ export function init({ root, name, lang = 'es', agent }) {
     writeAtomic(mb, `# ${t.title} ${name}\n${t.owner(name)}\n\n${t.read('—', 0)}\n\n---\n`);
   }
   if (agent) setAgent(mb, t, String(agent));
+  if (caps !== undefined && caps !== true) setCaps(mb, t, String(caps));
   const st = path.join(root, `${t.status}-${name}.md`);
   if (!fs.existsSync(st)) writeAtomic(st, t.statusHead(name));
   return { root, name, lang: cfg.lang, coordinator: cfg.coordinator ?? cfg.sessions[0], sessions: cfg.sessions };
@@ -309,9 +317,22 @@ export function status({ root }) {
     const f = mailboxFile(root, cfg, s);
     const text = fs.existsSync(f) ? read(f) : '';
     const msgs = parseMailbox(text);
+    const h = loadHealth(root, cfg, s);
     return {
       session: s,
       agent: text ? agentOf(text) : null,
+      caps: text ? capsOf(text) : [],
+      health: h
+        ? {
+            estado: h.estado,
+            ts: h.ts,
+            ramGB: h.ram?.disponibleGB ?? null,
+            compartidaGB: h.disco?.compartidaLibreGB ?? null,
+            libreDesde: h.trabajo?.libre ? h.trabajo.desde : null,
+            pesadoEnCurso: h.trabajo?.pesadoEnCurso ?? null,
+            equipo: h.equipo?.id ?? null,
+          }
+        : null,
       coordinator: s === (cfg.coordinator ?? cfg.sessions[0]),
       lastMessage: msgs.length ? msgs[msgs.length - 1].n : 0,
       lastDate: msgs.length ? msgs[msgs.length - 1].date : null,
@@ -407,7 +428,9 @@ export function remind({ root, me, now = new Date() }) {
       if (!sent) continue;
       const waitedMin = Math.floor((now.getTime() - sent.getTime()) / 60000);
       const load = loadOf(boxes, cfg.sessions, x);
-      const thresholdMin = Math.min(rc.maxMin, Math.round(rc.baseMin * (1 + load / LOAD_STEP)));
+      // A saturated session (M22) gets twice the patience: no reminders while it is drowning.
+      const saturated = loadHealth(root, cfg, x)?.estado === 'saturado';
+      const thresholdMin = Math.min(rc.maxMin, Math.round(rc.baseMin * (1 + load / LOAD_STEP))) * (saturated ? 2 : 1);
       const level = waitedMin >= thresholdMin * 4 ? 3 : waitedMin >= thresholdMin * 2 ? 2 : waitedMin >= thresholdMin ? 1 : 0;
       if (level === 0 || level <= (given[`${x}#${m.n}`] ?? 0)) continue;
       const f = mailboxFile(root, cfg, x);
@@ -426,7 +449,9 @@ export function remind({ root, me, now = new Date() }) {
       });
     }
   }
-  return out.sort((a, b) => b.level - a.level || b.waitedMin - a.waitedMin);
+  out.sort((a, b) => b.level - a.level || b.waitedMin - a.waitedMin);
+  if (me === (cfg.coordinator ?? cfg.sessions[0])) out.push(...resourceReminders({ root, cfg, me, now, given }));
+  return out;
 }
 
 /**
@@ -435,6 +460,18 @@ export function remind({ root, me, now = new Date() }) {
  */
 export function markReminded({ root, me, key, level }) {
   const cfg = loadConfig(root);
+  // Resource reminders (M22) are noted by their key («libre:<x>@<since>», «deseq:<x>@<ts>»), once.
+  if (/^(?:libre|deseq):[a-z0-9_-]+@/.test(String(key ?? ''))) {
+    const given = loadReminded(root, me);
+    given[String(key)] = 1;
+    const now = Date.now();
+    for (const k of Object.keys(given)) {
+      const at = /^(?:libre|deseq):[^@]+@(.+)$/.exec(k)?.[1];
+      if (at && now - new Date(at).getTime() > 7 * 24 * 3600 * 1000) delete given[k];
+    }
+    writeAtomic(remindFile(root, me), JSON.stringify(given, null, 2) + '\n');
+    return given;
+  }
   const [to, n] = String(key ?? '').split('#');
   if (!cfg.sessions.includes(to) || !Number.isInteger(Number(n))) throw new WassupError('--mark: <session>#<number>.');
   const k = Number(level);
@@ -443,6 +480,7 @@ export function markReminded({ root, me, key, level }) {
   const given = loadReminded(root, me);
   given[`${to}#${Number(n)}`] = Math.max(given[`${to}#${Number(n)}`] ?? 0, k);
   for (const key2 of Object.keys(given)) {
+    if (key2.includes(':')) continue;
     const [x, num] = key2.split('#');
     const m = boxes[me].messages.find((mm) => mm.n === Number(num));
     if (!m || !boxes[x] || !isPending(boxes, me, m, x)) delete given[key2];
@@ -474,7 +512,7 @@ export function closeAll({ root, me }) {
 }
 
 /** The coordinator (only writer of wassup.json) sets the reminder mode and times. */
-export function configure({ root, by, mode, base, max, assistMin, assistOwn, assistCooldown }) {
+export function configure({ root, by, mode, base, max, assistMin, assistOwn, assistCooldown, recursos = {} }) {
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
@@ -505,8 +543,16 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
     ac[k] = x;
   }
   plain.assist = ac;
+  const rs = { ...resourcesConfig(cfg) };
+  for (const [k, v] of Object.entries(recursos)) {
+    if (v === undefined) continue;
+    const x = Number(v);
+    if (!(k in RESOURCES_DEFAULTS) || !Number.isFinite(x) || x < 0) throw new WassupError(`recursos.${k}: a number ≥ 0.`);
+    rs[k] = x;
+  }
+  plain.recursos = rs;
   writeAtomic(cfgFile, JSON.stringify(plain, null, 2) + '\n');
-  return { ...r, assist: ac };
+  return { ...r, assist: ac, recursos: rs };
 }
 
 // ---------- offers of help (by workload) ----------
@@ -560,6 +606,417 @@ export function markAssist({ root, me, to, now = new Date() }) {
   return last;
 }
 
+// ---------- capabilities (M21) ----------
+/**
+ * «Capabilities: playwright, safari, cred:ferro-deploy, ram:16» in MY mailbox (one writer): what my machine
+ * CAN do. Never secrets: «cred:x» says that I hold the credentials for x, not what they are.
+ */
+function setCaps(file, t, caps) {
+  const text = read(file);
+  const list = String(caps)
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const line = `${t.caps}: ${list.join(', ')}`;
+  const re = /^(?:Capacidades|Capabilities): .*$/m;
+  const agentLine = /^((?:Sesión de Claude Code|Claude Code session): .*\n)/m;
+  // Replace my line; if there is none, put it under the agent line (or under the header).
+  const next = re.test(text)
+    ? text.replace(re, line)
+    : agentLine.test(text)
+      ? text.replace(agentLine, `$1${line}\n`)
+      : text.replace(/^(# .+\n.+\n)/, `$1${line}\n`);
+  writeAtomic(file, next);
+}
+
+export function capsOf(text) {
+  const raw = (text.match(/^(?:Capacidades|Capabilities): (.+)$/m) ?? [])[1];
+  return raw ? raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+}
+
+// ---------- resources (M22) ----------
+/**
+ * Each session measures its machine at checkpoints and writes health-<me>.json (salud-<yo>.json in Spanish;
+ * only that session writes it, whole file each time). Aggregated numbers only: no process names, paths or
+ * users. No sudo, no daemons, nothing installed; what cannot be read without permissions is «unknown».
+ */
+export const RESOURCES_DEFAULTS = {
+  ramDisponibleMinGB: 1.0,
+  ramJustoGB: 2.0,
+  cargaMaxPorNucleo: 1.5,
+  discoRepoMinGB: 5,
+  discoCompartidaMinGB: 2,
+  libreRecordarMin: 15,
+};
+export const HEALTH_CODE = { ok: 0, justo: 1, saturado: 2 };
+const HEAVY_NEVER_MOVED = /despliegue|desplegar|deploy|producci[oó]n|production/i;
+
+function resourcesConfig(cfg) {
+  const r = { ...RESOURCES_DEFAULTS, ...(cfg.recursos ?? {}) };
+  for (const k of Object.keys(RESOURCES_DEFAULTS)) r[k] = Number.isFinite(Number(r[k])) ? Number(r[k]) : RESOURCES_DEFAULTS[k];
+  return r;
+}
+const healthFile = (root, cfg, me) => path.join(root, `${cfg.t.health}-${me}.json`);
+export function loadHealth(root, cfg, me) {
+  const f = healthFile(root, cfg, me);
+  try {
+    return fs.existsSync(f) ? JSON.parse(read(f)) : null;
+  } catch {
+    return null;
+  }
+}
+const gb = (bytes) => Math.round((bytes / 1024 ** 3) * 10) / 10;
+
+/** `vm_stat` (macOS): available = (free + inactive + speculative + purgeable) × page size. */
+export function parseVmStat(text) {
+  const page = Number((/page size of (\d+) bytes/.exec(text) ?? [])[1] ?? 4096);
+  const pages = (name) => Number((new RegExp(`^Pages ${name}:\\s+(\\d+)`, 'm').exec(text) ?? [])[1] ?? 0);
+  return gb((pages('free') + pages('inactive') + pages('speculative') + pages('purgeable')) * page);
+}
+
+/** `sysctl vm.swapusage` (macOS): used, in GB. */
+export function parseSwapUsage(text) {
+  const m = /used = ([\d.]+)([MG])/.exec(text ?? '');
+  if (!m) return null;
+  return Math.round((m[2] === 'G' ? Number(m[1]) : Number(m[1]) / 1024) * 10) / 10;
+}
+
+/** `pmset -g therm` (macOS): speed limit and warning level. */
+export function parsePmsetTherm(text) {
+  const limit = Number((/CPU_Speed_Limit\s*=\s*(\d+)/.exec(text ?? '') ?? [])[1] ?? NaN);
+  const warning = /warning level\s*(?:=|:)?\s*[1-9]/i.test(text ?? '') && !/No thermal warning/i.test(text ?? '');
+  if (!Number.isFinite(limit) && !warning) return { estado: 'desconocida', limiteVelocidadPct: null, fuente: 'pmset' };
+  return {
+    estado: warning ? 'aviso' : Number.isFinite(limit) && limit < 100 ? 'estrangulada' : 'normal',
+    limiteVelocidadPct: Number.isFinite(limit) ? limit : null,
+    fuente: 'pmset',
+  };
+}
+
+function runner(cmd, argv, timeout = 5000) {
+  return execFileSync(cmd, argv, { timeout, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).toString();
+}
+
+function diskFreeGB(dir) {
+  try {
+    const s = fs.statfsSync(dir);
+    return gb(Number(s.bavail) * Number(s.bsize));
+  } catch {
+    return null;
+  }
+}
+
+/** Load per core: loadavg where it exists; on Windows (loadavg is 0) a 1-second sample of os.cpus(). */
+async function loadPerCore(platform, osm) {
+  const cores = osm.cpus().length || 1;
+  if (platform !== 'win32') return Math.round((osm.loadavg()[0] / cores) * 100) / 100;
+  const snap = () => osm.cpus().map((c) => ({ idle: c.times.idle, total: Object.values(c.times).reduce((a, b) => a + b, 0) }));
+  const a = snap();
+  await new Promise((r) => setTimeout(r, 1000));
+  const b = snap();
+  let idle = 0;
+  let total = 0;
+  b.forEach((x, i) => {
+    idle += x.idle - a[i].idle;
+    total += x.total - a[i].total;
+  });
+  return total ? Math.round((1 - idle / total) * 100) / 100 : 0;
+}
+
+/**
+ * Measures this machine. `run` and `osm` can be replaced in tests; `WASSUP_FAKE_*` variables override
+ * single figures (RAM_GB, SWAP_GB, LOAD, DISK_REPO_GB, DISK_SHARED_GB, THERMAL) to rehearse the protocol.
+ */
+export async function measure({ root, repo = process.cwd(), platform = process.platform, run = runner, osm, env = process.env }) {
+  osm = osm ?? (await import('node:os')).default;
+  const s = {
+    so: `${platform} ${osm.release()}`,
+    nucleos: osm.cpus().length || 1,
+    ramTotalGB: gb(osm.totalmem()),
+    ramGB: null,
+    swapGB: null,
+    carga: 0,
+    repoGB: diskFreeGB(repo),
+    compartidaGB: diskFreeGB(root),
+    termica: { estado: 'desconocida', limiteVelocidadPct: null, fuente: null },
+    vmMemGB: null,
+    equipoId: crypto.createHash('sha256').update(osm.hostname()).digest('hex').slice(0, 8),
+  };
+  const tryRun = (cmd, argv, timeout) => {
+    try {
+      return run(cmd, argv, timeout);
+    } catch {
+      return null;
+    }
+  };
+  if (platform === 'darwin') {
+    // os.freemem() is wrong on macOS (it leaves out inactive and purgeable memory): vm_stat.
+    const vm = tryRun('vm_stat', []);
+    s.ramGB = vm ? parseVmStat(vm) : gb(osm.freemem());
+    s.swapGB = parseSwapUsage(tryRun('sysctl', ['vm.swapusage']));
+    const th = tryRun('pmset', ['-g', 'therm']);
+    if (th) s.termica = parsePmsetTherm(th);
+  } else if (platform === 'linux') {
+    let mem = null;
+    try {
+      mem = fs.readFileSync('/proc/meminfo', 'utf8');
+    } catch {
+      /* not available */
+    }
+    const kb = (k) => Number((new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(mem ?? '') ?? [])[1] ?? NaN);
+    s.ramGB = Number.isFinite(kb('MemAvailable')) ? gb(kb('MemAvailable') * 1024) : gb(osm.freemem());
+    if (Number.isFinite(kb('SwapTotal'))) s.swapGB = gb((kb('SwapTotal') - kb('SwapFree')) * 1024);
+    try {
+      const zones = fs.readdirSync('/sys/class/thermal').filter((z) => z.startsWith('thermal_zone'));
+      const temps = zones.map((z) => Number(fs.readFileSync(`/sys/class/thermal/${z}/temp`, 'utf8')) / 1000).filter(Number.isFinite);
+      if (temps.length) {
+        const max = Math.max(...temps);
+        s.termica = { estado: max >= 90 ? 'aviso' : 'normal', limiteVelocidadPct: null, fuente: 'sysfs', maxC: Math.round(max) };
+      }
+    } catch {
+      /* unknown */
+    }
+  } else {
+    // Windows: freemem is real available memory. Swap and temperature in one PowerShell call, best effort
+    // (the thermal zone usually needs an administrator: then it stays «unknown»).
+    s.ramGB = gb(osm.freemem());
+    if (platform === 'win32') {
+      const out = tryRun(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          "$s=(Get-CimInstance Win32_PageFileUsage | Measure-Object CurrentUsage -Sum).Sum; $t=$null; try { $t=(Get-CimInstance -Namespace root/wmi MSAcpi_ThermalZoneTemperature -ErrorAction Stop | Select-Object -First 1).CurrentTemperature } catch {}; \"$s;$t\"",
+        ],
+        8000,
+      );
+      const [sw, te] = String(out ?? '').trim().split(';');
+      if (sw && Number.isFinite(Number(sw))) s.swapGB = Math.round((Number(sw) / 1024) * 10) / 10;
+      if (te && Number.isFinite(Number(te)) && Number(te) > 0) {
+        const c = Number(te) / 10 - 273.15;
+        s.termica = { estado: c >= 90 ? 'aviso' : 'normal', limiteVelocidadPct: null, fuente: 'wmi', maxC: Math.round(c) };
+      }
+    }
+  }
+  s.carga = await loadPerCore(platform, osm);
+  const docker = env.WASSUP_NO_DOCKER ? null : tryRun('docker', ['info', '--format', '{{.MemTotal}}'], 3000);
+  if (docker && Number(docker.trim()) > 0) s.vmMemGB = gb(Number(docker.trim()));
+  const fake = (k) => (env[`WASSUP_FAKE_${k}`] !== undefined ? env[`WASSUP_FAKE_${k}`] : undefined);
+  if (fake('RAM_GB') !== undefined) s.ramGB = Number(fake('RAM_GB'));
+  if (fake('SWAP_GB') !== undefined) s.swapGB = Number(fake('SWAP_GB'));
+  if (fake('LOAD') !== undefined) s.carga = Number(fake('LOAD'));
+  if (fake('DISK_REPO_GB') !== undefined) s.repoGB = Number(fake('DISK_REPO_GB'));
+  if (fake('DISK_SHARED_GB') !== undefined) s.compartidaGB = Number(fake('DISK_SHARED_GB'));
+  if (fake('THERMAL') !== undefined) s.termica = { estado: String(fake('THERMAL')), limiteVelocidadPct: null, fuente: 'fake' };
+  return s;
+}
+
+const fmt = (n) => String(n).replace('.', ',');
+/** Raw state of one sample and its reasons (before hysteresis). */
+export function classify(s, rec, prev, lang = 'es') {
+  const es = lang === 'es';
+  let sat = false;
+  let just = false;
+  const why = [];
+  if (s.ramGB != null && s.ramGB < rec.ramDisponibleMinGB) {
+    sat = true;
+    why.push(es ? `RAM disponible ${fmt(s.ramGB)} GB` : `available RAM ${s.ramGB} GB`);
+  } else if (s.ramGB != null && s.ramGB < rec.ramJustoGB) {
+    just = true;
+    why.push(es ? `RAM disponible ${fmt(s.ramGB)} GB` : `available RAM ${s.ramGB} GB`);
+  }
+  const prevSwap = prev?.ram?.swapUsadoGB;
+  if (s.swapGB != null && prevSwap != null && s.swapGB > prevSwap + 0.1 && s.ramGB != null && s.ramGB < rec.ramJustoGB) {
+    sat = true;
+    why.push(es ? 'swap creciendo' : 'swap growing');
+  }
+  if (s.carga > rec.cargaMaxPorNucleo) {
+    sat = true;
+    why.push(es ? `carga ${fmt(s.carga)} por núcleo` : `load ${s.carga} per core`);
+  } else if (s.carga > 1) {
+    just = true;
+    why.push(es ? `carga ${fmt(s.carga)} por núcleo` : `load ${s.carga} per core`);
+  }
+  if (s.repoGB != null && s.repoGB < rec.discoRepoMinGB) {
+    sat = true;
+    why.push(es ? `disco del repo ${fmt(s.repoGB)} GB` : `repo disk ${s.repoGB} GB`);
+  } else if (s.repoGB != null && s.repoGB < rec.discoRepoMinGB * 2) {
+    just = true;
+    why.push(es ? `disco del repo ${fmt(s.repoGB)} GB` : `repo disk ${s.repoGB} GB`);
+  }
+  if (s.compartidaGB != null && s.compartidaGB < rec.discoCompartidaMinGB) {
+    sat = true;
+    why.push(es ? `compartida ${fmt(s.compartidaGB)} GB` : `shared folder ${s.compartidaGB} GB`);
+  }
+  if (s.termica?.estado === 'aviso') {
+    sat = true;
+    why.push(es ? 'aviso térmico' : 'thermal warning');
+  } else if (s.termica?.estado === 'estrangulada') {
+    just = true;
+    why.push(es ? `CPU limitada al ${s.termica.limiteVelocidadPct} %` : `CPU limited to ${s.termica.limiteVelocidadPct} %`);
+  }
+  return { estado: sat ? 'saturado' : just ? 'justo' : 'ok', motivos: why };
+}
+
+/** «free» in the last message I sent; a new request to me (with «I expect from you», unanswered) after it undoes it. */
+function freeSince(boxes, sessions, me) {
+  const mine = boxes[me].messages;
+  const last = mine[mine.length - 1];
+  if (!last || !/(^|[^\p{L}])(libre|free)([^\p{L}]|$)/iu.test(last.body)) return null;
+  const since = parseStamp(last.date);
+  if (!since) return null;
+  for (const s of sessions) {
+    if (s === me) continue;
+    for (const m of boxes[s].messages) {
+      const d = parseStamp(m.date);
+      if (addressedTo(m, me) && m.expect && d && d > since && isPending(boxes, s, m, me)) return null;
+    }
+  }
+  return since;
+}
+
+/**
+ * `w health`: measure, apply hysteresis (a state changes only when the last two samples agree), write my
+ * health file and, once per episode and per machine, tell the coordinator (`[resources] saturated` and,
+ * when it recovers, `[resources] ok`). `sample` replaces the measurement (tests). Returns the file content
+ * plus `code` (0 ok, 1 tight, 2 saturated) and `sent` (the message number, if one was sent).
+ */
+export async function health({ root, me, busy, needs, now = new Date(), sample, repo, send: doSend = true }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  const rec = resourcesConfig(cfg);
+  const coordinator = cfg.coordinator ?? cfg.sessions[0];
+  const prev = loadHealth(root, cfg, me);
+  const s = sample ?? (await measure({ root, repo }));
+  const raw = classify(s, rec, prev, cfg.lang);
+  const historial = [...(prev?.historial ?? []), raw.estado].slice(-3);
+  const n = historial.length;
+  const estado = n >= 2 && historial[n - 1] === historial[n - 2] ? historial[n - 1] : prev?.estado ?? 'ok';
+  const boxes = allMailboxes(root, cfg);
+  const since = freeSince(boxes, cfg.sessions, me);
+  const trabajo = {
+    libre: !!since,
+    desde: since ? since.toISOString() : null,
+    pesadoEnCurso: busy === undefined ? prev?.trabajo?.pesadoEnCurso ?? null : String(busy).trim() || null,
+    necesita:
+      needs === undefined
+        ? busy === undefined
+          ? prev?.trabajo?.necesita ?? []
+          : String(busy).trim()
+            ? prev?.trabajo?.necesita ?? []
+            : []
+        : String(needs).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
+  };
+  // One notice per episode and per machine: a sibling session on the same machine that already warned
+  // (less than 5 minutes ago) counts as mine.
+  let aviso = prev?.aviso ?? { estado: null, ts: null, enviado: false };
+  let sent = null;
+  const es = cfg.lang === 'es';
+  const siblingWarned = () =>
+    cfg.sessions.some((x) => {
+      if (x === me) return false;
+      const h = loadHealth(root, cfg, x);
+      return (
+        h?.equipo?.id === s.equipoId &&
+        h?.aviso?.estado === 'saturado' &&
+        h.aviso.ts &&
+        now.getTime() - new Date(h.aviso.ts).getTime() < 5 * 60000
+      );
+    });
+  if (estado === 'saturado' && aviso.estado !== 'saturado') {
+    const sibling = siblingWarned();
+    aviso = { estado: 'saturado', ts: now.toISOString(), enviado: !sibling };
+    if (!sibling && doSend && me !== coordinator) {
+      const body = [
+        (es ? 'Motivos: ' : 'Reasons: ') + (raw.motivos.join('; ') || '—'),
+        trabajo.pesadoEnCurso ? (es ? 'Pesado en curso: ' : 'Heavy job running: ') + trabajo.pesadoEnCurso : '',
+        es ? 'No lanzo nada pesado nuevo hasta volver a «ok».' : 'I launch nothing heavy until back to «ok».',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      sent = send({
+        root,
+        from: me,
+        to: coordinator,
+        subject: `${es ? '[recursos] saturado' : '[resources] saturated'}: ${raw.motivos.join('; ') || '—'}`,
+        body,
+        expect: es ? 'reparto o espera' : 'reassign or wait',
+        now,
+      }).n;
+    }
+  } else if (estado === 'ok' && aviso.estado === 'saturado') {
+    if (aviso.enviado && doSend && me !== coordinator) {
+      sent = send({
+        root,
+        from: me,
+        to: coordinator,
+        subject: es ? '[recursos] ok' : '[resources] ok',
+        body: es ? 'Vuelvo a tener recursos.' : 'Resources are back.',
+        now,
+      }).n;
+    }
+    aviso = { estado: null, ts: null, enviado: false };
+  }
+  const out = {
+    v: 1,
+    sesion: me,
+    ts: now.toISOString(),
+    equipo: { id: s.equipoId, so: s.so, nucleos: s.nucleos, ramTotalGB: s.ramTotalGB },
+    ram: {
+      disponibleGB: s.ramGB,
+      pct: s.ramGB != null && s.ramTotalGB ? Math.round((s.ramGB / s.ramTotalGB) * 100) : null,
+      swapUsadoGB: s.swapGB,
+    },
+    cpu: { cargaPorNucleo: s.carga },
+    disco: { repoLibreGB: s.repoGB, compartidaLibreGB: s.compartidaGB },
+    termica: s.termica,
+    contenedores: { vmMemGB: s.vmMemGB },
+    estado,
+    // State of this sample alone: `estado` only follows it when two samples in a row agree (hysteresis).
+    muestra: raw.estado,
+    motivos: raw.motivos,
+    trabajo,
+    historial,
+    aviso,
+  };
+  writeAtomic(healthFile(root, cfg, me), JSON.stringify(out, null, 2) + '\n');
+  return { ...out, code: HEALTH_CODE[estado], sent };
+}
+
+/**
+ * Coordinator-only resource reminders: a session «free and with resources» for more than `libreRecordarMin`,
+ * and «imbalance» (a saturated session with a heavy job, and a free one in «ok» that has every capability
+ * the job needs). Deploys and production work are never suggested to move (credentials, M21).
+ */
+function resourceReminders({ root, cfg, me, now, given }) {
+  const rec = resourcesConfig(cfg);
+  const out = [];
+  const info = cfg.sessions.map((x) => {
+    const f = mailboxFile(root, cfg, x);
+    const text = fs.existsSync(f) ? read(f) : '';
+    return { x, h: loadHealth(root, cfg, x), caps: capsOf(text), agent: text ? agentOf(text) : null };
+  });
+  const free = info.filter(
+    (i) => i.x !== me && i.h?.estado === 'ok' && i.h?.trabajo?.libre && i.h.trabajo.desde,
+  );
+  for (const i of free) {
+    const min = Math.floor((now.getTime() - new Date(i.h.trabajo.desde).getTime()) / 60000);
+    const key = `libre:${i.x}@${i.h.trabajo.desde}`;
+    if (min >= rec.libreRecordarMin && !given[key])
+      out.push({ kind: 'libre', key, to: i.x, agent: i.agent, freeMin: min, ramGB: i.h.ram?.disponibleGB ?? null });
+  }
+  for (const s of info) {
+    const job = s.h?.trabajo?.pesadoEnCurso;
+    if (s.h?.estado !== 'saturado' || !job || HEAVY_NEVER_MOVED.test(job)) continue;
+    const needs = s.h.trabajo.necesita ?? [];
+    const to = free.find((i) => i.x !== s.x && needs.every((n) => i.caps.includes(n)));
+    const key = `deseq:${s.x}@${s.h.aviso?.ts ?? s.h.ts}`;
+    if (to && !given[key])
+      out.push({ kind: 'desequilibrio', key, from: s.x, to: to.x, agent: to.agent, job, ramGB: to.h.ram?.disponibleGB ?? null });
+  }
+  return out;
+}
+
 // ---------- command line ----------
 function args(argv) {
   const out = { _: [] };
@@ -589,6 +1046,12 @@ const HELP = `wassup.mjs — mailbox helper for Wassup (one writer per file)
            [--assist-min <load>] [--assist-own <load>] [--assist-cooldown <min>]
   assist   --root <shared> --me <me> [--json]               who is overloaded and could use my help
   assist   --root <shared> --me <me> --mark <other>          note that I offered (cooldown)
+  init     … --caps "playwright, safari, cred:<project>"      my machine's capabilities (never secrets)
+  health   --root <shared> --me <me> [--json] [--quiet]        measure RAM, disk, load and heat → health-<me>.json
+           [--busy "<heavy job>" [--needs a,b]] [--watch <s>]  exit code: 0 ok · 1 tight · 2 saturated
+  config   … [--ram-min <GB>] [--ram-tight <GB>] [--load-max <per core>] [--disk-repo-min <GB>]
+           [--disk-shared-min <GB>] [--free-remind <min>]      resource thresholds (coordinator)
+  --version
 «Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.
 send --re 4,6 marks the message as the answer to #4 and #6 of the recipient (stops their reminders).`;
 
@@ -596,11 +1059,12 @@ async function main(argv) {
   const a = args(argv);
   const cmd = a._[0];
   const root = a.root ? path.resolve(String(a.root)) : null;
+  if (a.version || cmd === 'version') return console.log(VERSION);
   if (!cmd || cmd === 'help' || a.help) return console.log(HELP);
   if (!root) throw new WassupError('--root <shared folder> is required.');
   switch (cmd) {
     case 'init': {
-      const r = init({ root, name: a.name, lang: a.lang, agent: a.agent });
+      const r = init({ root, name: a.name, lang: a.lang, agent: a.agent, caps: a.caps });
       return console.log(`ok · ${r.name} · coordinator: ${r.coordinator} · sessions: ${r.sessions.join(', ')}`);
     }
     case 'register': {
@@ -644,10 +1108,16 @@ async function main(argv) {
     case 'status': {
       const r = status({ root });
       if (a.json) return console.log(JSON.stringify(r, null, 2));
-      for (const s of r)
+      const now = Date.now();
+      for (const s of r) {
+        const h = s.health;
+        const hl = h
+          ? ` · ${h.estado === 'saturado' ? 'SATURADO' : h.estado}${h.libreDesde ? ` · libre ${Math.floor((now - new Date(h.libreDesde).getTime()) / 60000)} min` : ''}${h.ramGB != null ? ` · RAM ${h.ramGB} GB` : ''}${h.compartidaGB != null ? ` · shared ${h.compartidaGB} GB` : ''}${h.pesadoEnCurso ? ` · ${h.pesadoEnCurso}` : ''}`
+          : '';
         console.log(
-          `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} last #${s.lastMessage} ${s.lastDate ?? ''} · unread ${s.unread}${s.agent ? ` · ${s.agent}` : ''}`,
+          `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} last #${s.lastMessage} ${s.lastDate ?? ''} · unread ${s.unread}${s.agent ? ` · ${s.agent}` : ''}${hl}${s.caps.length ? ` · [${s.caps.join(', ')}]` : ''}`,
         );
+      }
       return;
     }
     case 'remind': {
@@ -660,7 +1130,14 @@ async function main(argv) {
       const r = remind({ root, me: a.me, now: a.now ? new Date(String(a.now)) : new Date() });
       if (a.json) return console.log(JSON.stringify(r, null, 2));
       if (!r.length) return console.log(cfg.t.noReminders);
-      for (const x of r) console.log(cfg.t.reminder(x));
+      for (const x of r)
+        console.log(
+          x.kind === 'libre'
+            ? `${cfg.t.free(x)} · --mark ${x.key}`
+            : x.kind === 'desequilibrio'
+              ? `${cfg.t.imbalance(x)} · --mark ${x.key}`
+              : cfg.t.reminder(x),
+        );
       return;
     }
     case 'config': {
@@ -673,9 +1150,42 @@ async function main(argv) {
         assistMin: a['assist-min'],
         assistOwn: a['assist-own'],
         assistCooldown: a['assist-cooldown'],
+        recursos: {
+          ramDisponibleMinGB: a['ram-min'],
+          ramJustoGB: a['ram-tight'],
+          cargaMaxPorNucleo: a['load-max'],
+          discoRepoMinGB: a['disk-repo-min'],
+          discoCompartidaMinGB: a['disk-shared-min'],
+          libreRecordarMin: a['free-remind'],
+        },
       });
       return console.log(
-        `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min`,
+        `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min · resources: ${JSON.stringify(r.recursos)}`,
+      );
+    }
+    case 'health': {
+      // --watch <s>: repeat while a heavy job is marked (--busy), then stop on its own (at most 4 h).
+      const once = async (first) =>
+        health({
+          root,
+          me: a.me,
+          busy: first && a.busy !== undefined ? (a.busy === true ? '' : String(a.busy)) : undefined,
+          needs: first && a.needs !== undefined && a.needs !== true ? String(a.needs) : undefined,
+        });
+      let r = await once(true);
+      if (a.watch) {
+        const every = Math.max(10, Number(a.watch) || 60) * 1000;
+        const until = Date.now() + 4 * 3600 * 1000;
+        while (r.trabajo.pesadoEnCurso && Date.now() < until) {
+          await new Promise((res) => setTimeout(res, every));
+          r = await once(false);
+        }
+      }
+      process.exitCode = r.code;
+      if (a.quiet) return;
+      if (a.json) return console.log(JSON.stringify(r, null, 2));
+      return console.log(
+        `${r.estado}${r.motivos.length ? ` · ${r.motivos.join('; ')}` : ''} · RAM ${r.ram.disponibleGB ?? '?'} GB · load ${r.cpu.cargaPorNucleo}/core · repo ${r.disco.repoLibreGB ?? '?'} GB · shared ${r.disco.compartidaLibreGB ?? '?'} GB · thermal ${r.termica.estado}${r.sent ? ` · sent #${r.sent}` : ''}`,
       );
     }
     case 'assist': {

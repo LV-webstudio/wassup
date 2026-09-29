@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0 · 2026-09-29
+- **Resources** (`wassup.mjs health`, SKILL §5b / §5 bis): measures available RAM (`vm_stat` on macOS), swap,
+  load per core, repo and shared-folder disk, temperature (best effort, never elevated) and the Docker VM; writes
+  `health-<me>.json` (figures only) and exits 0 ok · 1 tight · 2 saturated. Hysteresis (two samples in a row),
+  one `[resources] saturated` / `[resources] ok` notice per episode and per machine, `--busy`/`--needs`/`--watch`.
+  Thresholds in `wassup.json` (`config --ram-min --ram-tight --load-max --disk-repo-min --disk-shared-min
+  --free-remind`).
+- **Capabilities** (`init --caps "playwright, cred:<project>"`): one line in your own mailbox, shown by `status`.
+- `status` shows state, "free N min", RAM, shared disk, heavy job and capabilities. The coordinator's `remind`
+  adds "free with resources" and "imbalance" (never for deploys or production); a saturated session gets twice
+  the patience. `--version`.
+
 ## 0.8.2 · 2026-09-29
 - **Sharing out work, "free" and resources** (SKILL §5b / §5 bis), guide only: write "free" when a task ends;
   one capabilities line in your own mailbox (never secrets); the coordinator hands work to a free session before

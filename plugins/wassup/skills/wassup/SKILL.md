@@ -190,29 +190,40 @@ leaving**:
 ## 5b. Sharing out work, "free" and resources (the coordinator doesn't work while the others watch)
 - **"free":** when you finish a task, write the result and the word **"free"** in your mailbox and send a
   direct notice. Nobody should have to say "the Mac is idle".
-- **Capabilities** (one line in your own mailbox, next to `--agent`, kept up to date): what your machine has —
-  RAM and cores, browsers or test devices, repositories, **which credentials** (only "has the service account
-  for X", never the account itself). That tells the coordinator who can take what.
+- **Capabilities** (one line in your own mailbox, kept up to date): `w init --root … --name <me> --caps
+  "playwright, safari, cred:<project>"`. What your machine has — browsers or test devices, repositories, **which
+  credentials** (`cred:x` = "I hold the service account for x", never the account itself). `status` shows them
+  and the coordinator uses them to know who can take what.
 - **The coordinator** (the user's rule, 2026-09-29): before doing something itself or launching its own agent,
   it checks who is "free" and hands the work out. A **portable** task: context, shared paths (never paths that
   exist on one machine only), what "done" means and where to leave the result. **Not handed out:** anything
   that touches production and the user launches, or that needs files or credentials the other machine lacks
   (handing it over would bypass permissions).
-- **Resources, before anything heavy** (build, e2e suite, `npm ci`, a wave of agents, a deploy): check the
-  **available** memory and the disk.
-  - macOS: `vm_stat` (free + inactive + speculative + purgeable, × page size). ⚠ `os.freemem()` is wrong on
-    macOS: it reports far less than is really available.
-  - Windows: `Get-CimInstance Win32_OperatingSystem` → `FreePhysicalMemory`. Linux: `MemAvailable` in
-    `/proc/meminfo`. Disk: `df -h` or `Get-PSDrive`, for the repo **and** the shared folder.
-  - Under **1 GB** available, or disk below 5 GB (repo) or 2 GB (shared), you are **saturated**: launch nothing
-    heavy; let what is running finish and send the coordinator `[resources] saturated: <reason>` with "I expect
-    from you: reassign or wait" (one notice per episode, and `[resources] ok` once you recover). Between 1 and
-    2 GB, launch it only if it is the only heavy job on that machine.
-  - Two sessions on the same machine measure the same thing: only one sends the notice.
+- **Resources: `w health --root … --me <me>`** when starting each task (with `remind`), **before anything
+  heavy** (build, e2e suite, `npm ci`, a wave of agents, a deploy) and when finishing a long task.
+  - It measures **available** RAM (on macOS with `vm_stat`: `os.freemem()` reports far less than there is),
+    swap, load per core, free disk for the repo **and** the shared folder, temperature (if it can be read
+    without permissions; otherwise "unknown") and the Docker VM. It writes `health-<me>.json` (figures only: no
+    processes, paths or users) and exits with **0 ok · 1 tight · 2 saturated**.
+  - States: **saturated** under 1 GB available, load above 1.5 per core, disk under 5 GB (repo) or 2 GB
+    (shared) or a thermal warning; **tight** under 2 GB, load above 1 or a throttled CPU. It only changes when
+    **two samples in a row** agree (one build spike does not raise a notice). Thresholds: the coordinator, with
+    `w config --ram-min --ram-tight --load-max --disk-repo-min --disk-shared-min --free-remind`.
+  - On entering "saturated", **`health` itself sends** the coordinator `[resources] saturated: <reason>` ("I
+    expect from you: reassign or wait"), once per episode and per machine (two sessions on one machine do not
+    both warn), and `[resources] ok` when it recovers.
+  - Saturated: launch nothing heavy (`w health --quiet || …`); let what is running finish. Tight: launch it
+    only if it is the only heavy job on that machine. Mark heavy work with `--busy "e2e suite, ~20 min"
+    --needs playwright` (and `--busy ""` when done); `--watch 60` repeats while it lasts.
   - **Never** close the user's programs or kill other sessions' processes, nor ask another session to: if
     memory must be freed, tell the user the exact command.
-- The `w health` command (automatic measurement, `health-<me>.json`, states with hysteresis and a column in
-  `status`) arrives in 0.9.0; until then, do this by hand.
+- **The coordinator** uses `w status` (state, "free N min", RAM, shared disk, heavy job and capabilities of each
+  session) and `w remind`: "free with resources" (a session has been free and ok for `--free-remind` minutes:
+  give it something or confirm it should wait) and "imbalance" (a saturated session with a heavy job and a free
+  one with the capabilities in `--needs`: suggest moving it). A deploy or production work is **never** suggested
+  to move. Mark each notice with `w remind --mark <key>` (the key is on the line).
+- `health` works out "free" from your last message (the word "free"); a new unanswered request clears it. A
+  saturated session gets twice the patience in reminders.
 
 ## 6. Safeguards
 - Clean working tree before every pull (`git status`); if there are changes, report them, do not discard them.
