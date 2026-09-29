@@ -17,6 +17,8 @@
 //   node wassup.mjs remind   --root <shared> --me <me> [--json] [--mark <to>#<n> --level <k> | --close-all]
 //   node wassup.mjs config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
 //   node wassup.mjs health   --root <shared> --me <me> [--busy "<heavy job>" [--needs a,b]] [--json] [--quiet] [--watch <s>]
+//   node wassup.mjs log      --root <shared> --me <me> --tipo <type> --texto "…" [--cc <Claude Code version>]
+//   node wassup.mjs report   --root <shared> [--desde YYYY-MM-DD] [--retro] [--issue]
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,7 +33,7 @@ const TEXT = {
     statusHead: (n) => `# Estado de ${n}\nActualizado: — · Commit probado: —\n\n## Resultado\n| Prueba / tarea | Resultado | Detalle |\n|---|---|---|\n`,
     none: 'Nada sin leer.', unreadFrom: (o, k) => `${o}: ${k} sin leer`, expects: 'espera de ti',
     agent: 'Sesión de Claude Code', timeout: 'Nada nuevo en el tiempo de espera.',
-    reply: 'En respuesta a', noReminders: 'Nada que recordar.', caps: 'Capacidades', health: 'salud',
+    reply: 'En respuesta a', noReminders: 'Nada que recordar.', caps: 'Capacidades', health: 'salud', incidents: 'incidencias', report: 'reporte',
     free: (r) => `${r.to} · libre ${r.freeMin} min y con recursos${r.ramGB != null ? ` (RAM ${String(r.ramGB).replace('.', ',')} GB)` : ''} → asígnale algo o confirma que espere${r.agent ? ` (${r.agent})` : ''}`,
     imbalance: (r) => `desequilibrio: ${r.from} SATURADO con «${r.job}» → ${r.to} libre${r.ramGB != null ? `, ${String(r.ramGB).replace('.', ',')} GB` : ''}: propón moverlo${r.agent ? ` (${r.agent})` : ''}`,
     noAssist: (l) => `Nadie necesita ayuda ahora (tu carga: ${l}).`,
@@ -45,7 +47,7 @@ const TEXT = {
     statusHead: (n) => `# Status of ${n}\nUpdated: — · Commit tested: —\n\n## Result\n| Test / task | Result | Detail |\n|---|---|---|\n`,
     none: 'Nothing unread.', unreadFrom: (o, k) => `${o}: ${k} unread`, expects: 'expects from you',
     agent: 'Claude Code session', timeout: 'Nothing new within the timeout.',
-    reply: 'In reply to', noReminders: 'Nothing to remind.', caps: 'Capabilities', health: 'health',
+    reply: 'In reply to', noReminders: 'Nothing to remind.', caps: 'Capabilities', health: 'health', incidents: 'incidents', report: 'report',
     free: (r) => `${r.to} · free for ${r.freeMin} min with resources${r.ramGB != null ? ` (RAM ${r.ramGB} GB)` : ''} → give it something or confirm it should wait${r.agent ? ` (${r.agent})` : ''}`,
     imbalance: (r) => `imbalance: ${r.from} SATURATED with «${r.job}» → ${r.to} is free${r.ramGB != null ? `, ${r.ramGB} GB` : ''}: suggest moving it${r.agent ? ` (${r.agent})` : ''}`,
     noAssist: (l) => `Nobody needs help right now (your load: ${l}).`,
@@ -512,7 +514,7 @@ export function closeAll({ root, me }) {
 }
 
 /** The coordinator (only writer of wassup.json) sets the reminder mode and times. */
-export function configure({ root, by, mode, base, max, assistMin, assistOwn, assistCooldown, recursos = {} }) {
+export function configure({ root, by, mode, base, max, assistMin, assistOwn, assistCooldown, recursos = {}, incidents }) {
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
@@ -551,8 +553,12 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
     rs[k] = x;
   }
   plain.recursos = rs;
+  if (incidents !== undefined) {
+    if (!['on', 'off', true, false].includes(incidents)) throw new WassupError('--incidents: on or off.');
+    plain.incidencias = incidents === 'on' || incidents === true;
+  }
   writeAtomic(cfgFile, JSON.stringify(plain, null, 2) + '\n');
-  return { ...r, assist: ac, recursos: rs };
+  return { ...r, assist: ac, recursos: rs, incidencias: plain.incidencias === true };
 }
 
 // ---------- offers of help (by workload) ----------
@@ -1017,6 +1023,215 @@ function resourceReminders({ root, cfg, me, now, given }) {
   return out;
 }
 
+// ---------- incidents and reports (M23) ----------
+/**
+ * Opt-in per project (`wassup.json: "incidencias": true`, set by the coordinator). Each session appends to
+ * its own incidents/<me>.jsonl (incidencias/<yo>.jsonl in Spanish): one line per event, schema
+ * `wassup-incidencia/1`. Nothing is ever sent: `report` writes a file that the user reads and, if they want,
+ * sends by hand (GitHub Issues for Wassup, Claude Code's /feedback for the product).
+ */
+export const INCIDENT_SCHEMA = 'wassup-incidencia/1';
+export const INCIDENT_TYPES = [
+  'bloqueo-permiso',
+  'mensaje-perdido',
+  'sesion-saturada',
+  'sesion-ociosa',
+  'conflicto-fichero',
+  'reintento',
+  'error-script',
+  'correccion',
+  'idea',
+];
+/** Types that are about Claude Code or the model rather than Wassup (channel: /feedback). */
+export const PRODUCT_TYPES = new Set(['bloqueo-permiso', 'mensaje-perdido']);
+const INCIDENT_DAYS = 90;
+const incidentsDir = (root, cfg) => path.join(root, cfg.t.incidents);
+
+/**
+ * Removes what must never travel: e-mails, phone numbers, tokens and keys, absolute paths and URL
+ * paths/queries (the host stays). One line, 300 characters at most.
+ */
+export function scrub(text) {
+  return String(text ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[correo]')
+    .replace(/\b(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AIza|ya29|AKIA)[-_A-Za-z0-9.]{8,}/g, '[token]')
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, '[token]')
+    .replace(/\b(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{32,}={0,2}/g, '[token]')
+    .replace(/\bhttps?:\/\/([^/\s?#]+)[^\s]*/gi, 'https://$1')
+    .replace(/\b[A-Za-z]:[\\/][^\s"'`«»]*/g, '[ruta]')
+    .replace(/(^|[\s"'`(«])(?:~|\/(?:Users|home|root|var|tmp|private|Volumes|mnt|opt|etc|srv))\/[^\s"'`»)]*/g, '$1[ruta]')
+    .replace(/\\\\[^\s"'`«»]+/g, '[ruta]')
+    .replace(/(?:\+|00)\d{1,3}[\s.-]?\d{2,4}(?:[\s.-]?\d{2,4}){2,4}\b/g, '[teléfono]')
+    .replace(/\b[6789]\d{2}(?:[\s.-]?\d{2,3}){3}\b/g, '[teléfono]')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, 300);
+}
+
+/**
+ * `w log`: appends one incident to MY file (only I write it) and drops lines older than 90 days.
+ * `claudeCode` is the Claude Code version if known (e.g. from `claude --version`); it is not guessed.
+ */
+export function logIncident({ root, me, tipo, texto, claudeCode, now = new Date() }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (cfg.incidencias !== true)
+    throw new WassupError('Incidents are off for this project (opt-in): the coordinator enables them with «config --incidents on».');
+  if (!INCIDENT_TYPES.includes(tipo)) throw new WassupError(`--tipo: one of ${INCIDENT_TYPES.join(', ')}.`);
+  const clean = scrub(texto);
+  if (!clean) throw new WassupError('--texto: one sentence describing what happened.');
+  const dir = incidentsDir(root, cfg);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${me}.jsonl`);
+  const cutoff = now.getTime() - INCIDENT_DAYS * 24 * 3600 * 1000;
+  const kept = fs.existsSync(file)
+    ? read(file)
+        .split('\n')
+        .filter((l) => {
+          try {
+            return l.trim() && new Date(JSON.parse(l).ts).getTime() >= cutoff;
+          } catch {
+            return false;
+          }
+        })
+    : [];
+  const entry = {
+    schema: INCIDENT_SCHEMA,
+    ts: now.toISOString(),
+    sesion: me,
+    wassup: VERSION,
+    claudeCode: claudeCode && claudeCode !== true ? scrub(claudeCode).slice(0, 40) : null,
+    so: process.platform,
+    tipo,
+    texto: clean,
+  };
+  kept.push(JSON.stringify(entry));
+  writeAtomic(file, kept.join('\n') + '\n');
+  return entry;
+}
+
+/** Every session's incidents since `desde` (YYYY-MM-DD), oldest first. */
+export function readIncidents({ root, desde }) {
+  const cfg = loadConfig(root);
+  const dir = incidentsDir(root, cfg);
+  const from = desde ? new Date(`${desde}T00:00:00`) : null;
+  const out = [];
+  for (const s of cfg.sessions) {
+    const f = path.join(dir, `${s}.jsonl`);
+    if (!fs.existsSync(f)) continue;
+    for (const l of read(f).split('\n')) {
+      if (!l.trim()) continue;
+      try {
+        const e = JSON.parse(l);
+        if (e.schema !== INCIDENT_SCHEMA) continue;
+        if (from && new Date(e.ts) < from) continue;
+        out.push(e);
+      } catch {
+        /* a broken line is skipped */
+      }
+    }
+  }
+  return out.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+}
+
+/**
+ * `w report`: an ANONYMISED summary for the user to read before sending it anywhere. Sessions become
+ * «A», «B»…; texts are scrubbed again. `retro`: adds the retrospective block (what failed, what repeated,
+ * what to change). `issue`: a GitHub issue body for Wassup. Writes report-<date>.md in the shared folder.
+ */
+export function report({ root, desde, retro = false, issue = false, now = new Date() }) {
+  const cfg = loadConfig(root);
+  const es = cfg.lang === 'es';
+  const all = readIncidents({ root, desde });
+  const alias = new Map();
+  const who = (s) => {
+    if (!alias.has(s)) alias.set(s, String.fromCharCode(65 + (alias.size % 26)) + (alias.size >= 26 ? alias.size : ''));
+    return alias.get(s);
+  };
+  all.forEach((e) => who(e.sesion));
+  const sessionsWithIncidents = alias.size;
+  // Session names inside the texts too (they can name a project or a client): each one → its letter.
+  cfg.sessions.forEach((s) => who(s));
+  const anon = (t) =>
+    cfg.sessions.reduce(
+      (x, s) => x.replace(new RegExp(`(^|[^\\p{L}\\p{N}_-])${s}(?=$|[^\\p{L}\\p{N}_-])`, 'giu'), `$1${who(s)}`),
+      scrub(t),
+    );
+  const count = (key) => {
+    const m = new Map();
+    for (const e of all) m.set(key(e), (m.get(key(e)) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+  };
+  const norm = (t) => anon(t).toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+  const repeated = count((e) => `${e.tipo} · ${norm(e.texto)}`).filter(([, n]) => n > 1).slice(0, 5);
+  const ideas = all.filter((e) => e.tipo === 'idea');
+  const product = all.filter((e) => PRODUCT_TYPES.has(e.tipo));
+  const day = now.toISOString().slice(0, 10);
+  const L = [];
+  const h = (es_, en_) => (es ? es_ : en_);
+  L.push(issue ? h(`# Wassup · reporte de incidencias (${day})`, `# Wassup · incident report (${day})`) : h(`# Reporte de incidencias · ${day}`, `# Incident report · ${day}`));
+  L.push('');
+  L.push(
+    h(
+      `Anónimo (sesiones como A, B…; sin rutas, correos, teléfonos ni tokens). Formato \`${INCIDENT_SCHEMA}\`. **Léelo antes de enviarlo:** nada se envía solo.`,
+      `Anonymised (sessions as A, B…; no paths, e-mails, phone numbers or tokens). Format \`${INCIDENT_SCHEMA}\`. **Read it before sending it:** nothing is sent automatically.`,
+    ),
+  );
+  L.push('');
+  L.push(h(`- Periodo: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${all.length} incidencias · ${sessionsWithIncidents} sesiones`, `- Period: ${all[0]?.ts?.slice(0, 10) ?? '—'} → ${all.at(-1)?.ts?.slice(0, 10) ?? '—'} · ${all.length} incidents · ${sessionsWithIncidents} sessions`));
+  L.push(h('- Versiones de Wassup: ', '- Wassup versions: ') + (count((e) => e.wassup).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
+  L.push(h('- Claude Code: ', '- Claude Code: ') + (count((e) => e.claudeCode ?? h('desconocida', 'unknown')).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
+  L.push(h('- Sistemas: ', '- Systems: ') + (count((e) => e.so).map(([v, n]) => `${v} (${n})`).join(', ') || '—'));
+  L.push('');
+  L.push(h('## Por tipo', '## By type'));
+  L.push(h('| Tipo | Veces |', '| Type | Count |'));
+  L.push('|---|---|');
+  for (const [t, n] of count((e) => e.tipo)) L.push(`| ${t} | ${n} |`);
+  L.push('');
+  L.push(h('## Lo que más se repite', '## Most repeated'));
+  L.push(repeated.length ? repeated.map(([k, n]) => `- ${k} (${n})`).join('\n') : h('- Nada se repite.', '- Nothing repeats.'));
+  L.push('');
+  L.push(h('## Ideas', '## Ideas'));
+  L.push(ideas.length ? ideas.map((e) => `- ${anon(e.texto)} (${who(e.sesion)})`).join('\n') : '- —');
+  if (!issue) {
+    L.push('');
+    L.push(h('## Detalle', '## Detail'));
+    for (const e of all) L.push(`- ${e.ts.slice(0, 16).replace('T', ' ')} · ${who(e.sesion)} · ${e.tipo} · ${anon(e.texto)}`);
+  }
+  if (retro) {
+    const failed = all.filter((e) => ['bloqueo-permiso', 'mensaje-perdido', 'error-script', 'conflicto-fichero', 'correccion'].includes(e.tipo));
+    const idle = all.filter((e) => ['sesion-ociosa', 'sesion-saturada'].includes(e.tipo));
+    L.push('');
+    L.push(h('## Retrospectiva', '## Retrospective'));
+    L.push(h('### Qué falló', '### What failed'));
+    L.push(failed.length ? failed.map((e) => `- ${e.tipo}: ${anon(e.texto)}`).join('\n') : '- —');
+    L.push(h('### Qué se repitió', '### What repeated'));
+    L.push(repeated.length ? repeated.map(([k, n]) => `- ${k} (${n})`).join('\n') : '- —');
+    L.push(h('### Qué cambiar', '### What to change'));
+    const change = [];
+    if (all.some((e) => e.tipo === 'bloqueo-permiso'))
+      change.push(h('Pasar el cuestionario de permisos (§3 quinquies) antes de que el usuario se vaya.', 'Run the permissions questionnaire (§3e) before the user leaves.'));
+    if (idle.length) change.push(h('Repartir antes de hacer: «libre» al terminar y `w health`/`w status` (§5 bis).', 'Hand work out before doing it: "free" when done and `w health`/`w status` (§5b).'));
+    if (all.some((e) => e.tipo === 'correccion')) change.push(h('Comprobar en la fuente antes de dar un dato por bueno.', 'Check the source before calling a figure right.'));
+    if (all.some((e) => e.tipo === 'conflicto-fichero')) change.push(h('Un dueño por fichero; declarar los que están en uso.', 'One owner per file; declare the ones in use.'));
+    for (const e of ideas) change.push(anon(e.texto));
+    L.push(change.length ? change.map((x) => `- ${x}`).join('\n') : '- —');
+  }
+  L.push('');
+  L.push(h('## Dónde enviarlo (a mano)', '## Where to send it (by hand)'));
+  L.push(h('- Wassup: una *issue* en el repositorio de Wassup en GitHub (`w report --issue` deja el texto listo).', '- Wassup: an issue in the Wassup repository on GitHub (`w report --issue` prepares the text).'));
+  L.push(
+    product.length
+      ? h(`- Claude Code o el modelo: ${product.length} incidencias de ese tipo (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` o \`/bug\` en Claude Code.`, `- Claude Code or the model: ${product.length} such incidents (${[...new Set(product.map((e) => e.tipo))].join(', ')}): \`/feedback\` or \`/bug\` in Claude Code.`)
+      : h('- Claude Code o el modelo: ninguna incidencia de ese tipo.', '- Claude Code or the model: no such incidents.'),
+  );
+  const text = L.join('\n') + '\n';
+  const file = path.join(root, `${cfg.t.report}-${day}${issue ? '-issue' : ''}.md`);
+  writeAtomic(file, text);
+  return { file, text, total: all.length, product: product.length };
+}
+
 // ---------- command line ----------
 function args(argv) {
   const out = { _: [] };
@@ -1051,6 +1266,11 @@ const HELP = `wassup.mjs — mailbox helper for Wassup (one writer per file)
            [--busy "<heavy job>" [--needs a,b]] [--watch <s>]  exit code: 0 ok · 1 tight · 2 saturated
   config   … [--ram-min <GB>] [--ram-tight <GB>] [--load-max <per core>] [--disk-repo-min <GB>]
            [--disk-shared-min <GB>] [--free-remind <min>]      resource thresholds (coordinator)
+  log      --root <shared> --me <me> --tipo <type> --texto "…" [--cc <version>]   note an incident (opt-in: config --incidents on)
+           types: bloqueo-permiso, mensaje-perdido, sesion-saturada, sesion-ociosa, conflicto-fichero, reintento,
+           error-script, correccion, idea · e-mails, phones, tokens and absolute paths are removed · kept 90 days
+  report   --root <shared> [--desde YYYY-MM-DD] [--retro] [--issue]   anonymised report for the user to read; never sent
+  config   … [--incidents on|off]                            incidents opt-in (coordinator)
   --version
 «Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.
 send --re 4,6 marks the message as the answer to #4 and #6 of the recipient (stops their reminders).`;
@@ -1158,10 +1378,19 @@ async function main(argv) {
           discoCompartidaMinGB: a['disk-shared-min'],
           libreRecordarMin: a['free-remind'],
         },
+        incidents: a.incidents,
       });
       return console.log(
         `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min · resources: ${JSON.stringify(r.recursos)}`,
       );
+    }
+    case 'log': {
+      const e = logIncident({ root, me: a.me, tipo: a.tipo, texto: a.texto, claudeCode: a.cc });
+      return console.log(`ok · ${e.tipo} · ${e.texto}`);
+    }
+    case 'report': {
+      const r = report({ root, desde: a.desde && a.desde !== true ? String(a.desde) : undefined, retro: !!a.retro, issue: !!a.issue });
+      return console.log(`ok · ${r.total} · ${r.file}${r.product ? ` · Claude Code: ${r.product} → /feedback` : ''}`);
     }
     case 'health': {
       // --watch <s>: repeat while a heavy job is marked (--busy), then stop on its own (at most 4 h).

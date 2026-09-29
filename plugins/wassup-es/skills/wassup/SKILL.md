@@ -228,6 +228,26 @@ que se va**:
 - «libre» lo deduce `health` de tu último mensaje (la palabra «libre»); un encargo nuevo sin contestar lo
   quita. Una sesión saturada tiene el doble de paciencia en los recordatorios.
 
+## 5 ter. Incidencias y reportes (opcional; nada se envía solo)
+Para mejorar Wassup (y, si el usuario quiere, contárselo a Anthropic). **Apagado por defecto:** lo enciende la
+coordinadora con `w config --by <yo> --incidents on`.
+- **Apuntar** (`w log --root … --me <yo> --tipo <tipo> --texto "una frase" [--cc <versión de Claude Code>]`), en
+  **tu** `incidencias/<yo>.jsonl` (formato `wassup-incidencia/1`, una línea por hecho, se borra a los 90 días):
+  - `bloqueo-permiso`: el clasificador de permisos deniega algo (la **categoría**, no la orden completa);
+  - `mensaje-perdido`: un directo retenido, rechazado o que no llegó;
+  - `sesion-saturada` (§5 bis) · `sesion-ociosa`: una sesión parada y el usuario tuvo que decirlo;
+  - `conflicto-fichero` · `reintento` · `error-script` · `correccion`: un dato que diste por bueno y era falso ·
+    `idea`.
+- El texto pasa por un filtro que quita correos, teléfonos, tokens, rutas absolutas y rutas de URL; aun así,
+  **nunca** escribas contenido de ficheros, datos de clientes ni secretos.
+- **Reporte:** `w report --root … [--desde AAAA-MM-DD] [--retro] [--issue]` junta las de todas las sesiones en
+  `reporte-<fecha>.md`, **anónimo** (sesiones como A, B…, también dentro de los textos): recuentos por tipo,
+  versiones, lo que más se repite e ideas. `--retro` añade la retrospectiva (qué falló, qué se repitió, qué
+  cambiar); `--issue`, el texto para una *issue* de Wassup en GitHub.
+- **Enviar es cosa del usuario, siempre a mano:** lo de Wassup, como *issue* en GitHub; lo de Claude Code o del
+  modelo (`bloqueo-permiso`, `mensaje-perdido`), con `/feedback` o `/bug`. Al cerrar la sesión, si hay de estas,
+  recuérdaselo al usuario, con el reporte para que lo lea antes.
+
 ## 6. Protecciones
 - Árbol limpio antes de cada pull (`git status`); si hay cambios, se avisa, no se descartan.
 - `--ff-only` en todos los pulls; push desactivado donde no se programa.

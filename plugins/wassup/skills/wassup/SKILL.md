@@ -225,6 +225,26 @@ leaving**:
 - `health` works out "free" from your last message (the word "free"); a new unanswered request clears it. A
   saturated session gets twice the patience in reminders.
 
+## 5c. Incidents and reports (optional; nothing is sent automatically)
+To improve Wassup (and, if the user wants, to tell Anthropic). **Off by default:** the coordinator turns it on
+with `w config --by <me> --incidents on`.
+- **Note** (`w log --root … --me <me> --tipo <type> --texto "one sentence" [--cc <Claude Code version>]`), in
+  **your** `incidents/<me>.jsonl` (format `wassup-incidencia/1`, one line per event, deleted after 90 days):
+  - `bloqueo-permiso`: the permission classifier denies something (the **category**, not the full command);
+  - `mensaje-perdido`: a direct message held, refused or lost;
+  - `sesion-saturada` (§5b) · `sesion-ociosa`: a session sat idle and the user had to say so;
+  - `conflicto-fichero` · `reintento` · `error-script` · `correccion`: a figure you called right that was
+    wrong · `idea`.
+- The text goes through a filter that removes e-mails, phone numbers, tokens, absolute paths and URL paths;
+  even so, **never** write file contents, client data or secrets.
+- **Report:** `w report --root … [--desde YYYY-MM-DD] [--retro] [--issue]` gathers every session's incidents in
+  `report-<date>.md`, **anonymised** (sessions as A, B…, inside the texts too): counts by type, versions, what
+  repeats most and ideas. `--retro` adds the retrospective (what failed, what repeated, what to change);
+  `--issue`, the text for a Wassup issue on GitHub.
+- **Sending is the user's call, always by hand:** Wassup matters as a GitHub issue; Claude Code or model
+  matters (`bloqueo-permiso`, `mensaje-perdido`) with `/feedback` or `/bug`. When the session ends, if there are
+  any, remind the user, with the report for them to read first.
+
 ## 6. Safeguards
 - Clean working tree before every pull (`git status`); if there are changes, report them, do not discard them.
 - `--ff-only` on every pull; push disabled wherever no code is written.

@@ -11,6 +11,10 @@
 - `status` shows state, "free N min", RAM, shared disk, heavy job and capabilities. The coordinator's `remind`
   adds "free with resources" and "imbalance" (never for deploys or production); a saturated session gets twice
   the patience. `--version`.
+- **Incidents and reports** (`wassup.mjs log` / `report`, SKILL §5c / §5 ter), opt-in per project
+  (`config --incidents on`): each session appends to its own `incidents/<me>.jsonl` (schema
+  `wassup-incidencia/1`, 9 types, e-mails, phones, tokens and absolute paths removed, 90 days). `report` writes an
+  anonymised `report-<date>.md` (`--retro`, `--issue`) for the user to read; nothing is ever sent.
 
 ## 0.8.2 · 2026-09-29
 - **Sharing out work, "free" and resources** (SKILL §5b / §5 bis), guide only: write "free" when a task ends;
