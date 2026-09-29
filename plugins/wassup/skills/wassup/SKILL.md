@@ -100,6 +100,7 @@ w status   --root <folder>
 w remind   --root <folder> --me <me>                                 # reminders due now
 w remind   --root <folder> --me <me> --mark <other>#<n> --level <1|2|3>
 w config   --root <folder> --by <coordinator> --mode escalate|auto --base 60 --max 480
+w assist   --root <folder> --me <me>                                 # who could use my help?
 ```
 - The **first `init`** creates `wassup.json` and that session becomes the **coordinator**: the only one that
   writes that file (`register`). The others, once registered, run their own `init`, which only creates their files.
@@ -135,6 +136,17 @@ What you do:
 6. A session's name in ListAgents **depends on the machine** (on its own, the `/rename` name; over Remote Control,
    the title). Put both in your `init --agent "<local name> | <Remote Control title>"`; when notifying, use the one
    you see in your ListAgents.
+
+## 3d. Offering help (by workload)
+Using the same load as reminders, `w assist --me <me>` says which sessions are **overloaded** (load ≥ 6)
+while you are **nearly free** (load ≤ 2). Thresholds live in `wassup.json` (the coordinator:
+`config --assist-min --assist-own --assist-cooldown`).
+1. Run it together with `remind` when you start and when you finish a long task.
+2. For each session listed: a short direct message — "I have room: shall I take something off you? Tell me
+   which task and which files I should own". Then `w assist --me <me> --mark <other>` (not repeated for 2 h).
+3. The overloaded session decides. If it hands something over, it writes it in **its** mailbox: the task and
+   the files that change owner (golden rule: one writer per file). Without that message, touch nothing of theirs.
+4. Never offer if the user asked you to wait or if your own work is half done.
 
 ## 4. When to read (without waiting for the user)
 - At the **start of every task** and **before every `git pull`**: the other mailboxes (what is new since

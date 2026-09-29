@@ -103,6 +103,7 @@ w status   --root <carpeta>
 w remind   --root <carpeta> --me <yo>                               # recordatorios que tocan ahora
 w remind   --root <carpeta> --me <yo> --mark <otra>#<n> --level <1|2|3>
 w config   --root <carpeta> --by <coordinadora> --mode escalate|auto --base 60 --max 480
+w assist   --root <carpeta> --me <yo>                               # ¿a quién puedo ayudar?
 ```
 - El **primer `init`** crea `wassup.json` y esa sesión pasa a ser la **coordinadora**: es la única que escribe
   ese fichero (`register`). Las demás, tras ser registradas, hacen su `init`, que solo crea sus ficheros.
@@ -138,6 +139,17 @@ Qué haces tú:
 6. El nombre de una sesión en ListAgents **cambia según el equipo** (en el suyo, el de `/rename`; por Remote Control,
    el título). Pon los dos en tu `init --agent "<nombre local> | <título en Remote Control>"`; al avisar, usa el que
    veas en tu ListAgents.
+
+## 3 quater. Ofrecer ayuda (por carga de trabajo)
+Con la misma carga que los recordatorios, `w assist --me <yo>` dice qué sesiones están **sobrecargadas**
+(carga ≥ 6) cuando tú estás **casi libre** (carga ≤ 2). Umbrales en `wassup.json` (la coordinadora:
+`config --assist-min --assist-own --assist-cooldown`).
+1. Ejecútalo junto a `remind` al empezar y al terminar una tarea larga.
+2. Por cada sesión que salga: mensaje directo corto — «Tengo hueco: ¿te quito algo? Dime qué tarea y qué
+   ficheros paso a llevar yo». Luego `w assist --me <yo> --mark <otra>` (no se repite en 2 h).
+3. La sobrecargada decide. Si cede algo, lo escribe en **su** buzón: tarea y ficheros que cambian de dueña
+   (regla de oro: un solo escritor por fichero). Sin ese mensaje, no se toca nada suyo.
+4. Nunca te ofrezcas si el usuario te ha pedido esperar o si tu trabajo está a medias.
 
 ## 4. Cuándo leer (sin esperar al usuario)
 - Al **empezar cada tarea** y **antes de cada `git pull`**: los demás buzones (lo nuevo desde tu «Leído

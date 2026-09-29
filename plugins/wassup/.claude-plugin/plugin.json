@@ -1,7 +1,7 @@
 {
   "name": "wassup",
   "displayName": "Wassup",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Lets several Claude Code sessions on different machines (Windows, macOS, Linux) work on one project without stepping on each other and talk to each other, with no server: one writer per file, a direct channel over Remote Control and a numbered mailbox in a shared folder.",
   "icon": "./.claude-plugin/icon.png",
   "author": {

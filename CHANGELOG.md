@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 · 2026-09-29
+- **Offers of help by workload** (`wassup.mjs assist`, SKILL §3d / §3 quater): with the same load as the
+  reminders, a nearly free session (load ≤ 2) sees which ones are overloaded (load ≥ 6) and offers to take
+  work off them, at most once every 2 hours per session (`assist-<me>.json`). The overloaded one decides and
+  writes in its own mailbox which task and files change owner: one writer per file still holds.
+- `config --assist-min --assist-own --assist-cooldown` (coordinator).
+
 ## 0.7.1 · 2026-09-29
 - Found by a second session on the first real run: "I expect from you: nothing" no longer counts as a request;
   `remind --close-all` closes everything pending when moving a mailbox from before 0.7 (answers there did not

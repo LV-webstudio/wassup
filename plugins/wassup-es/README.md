@@ -21,7 +21,7 @@ Salió de un proyecto real: un PC con 8 GB de memoria programando y un Mac pasan
 pruebas de extremo a extremo que en el PC no cabía.
 
 ## Estado
-Versión 0.7.1 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
+Versión 0.8.0 · empaquetada como plugin de Claude Code · probada en campo con **tres sesiones en dos
 equipos** (Windows 11 + macOS 13), 15 pruebas automáticas.
 
 ## Instalación

@@ -30,6 +30,8 @@ const TEXT = {
     none: 'Nada sin leer.', unreadFrom: (o, k) => `${o}: ${k} sin leer`, expects: 'espera de ti',
     agent: 'Sesión de Claude Code', timeout: 'Nada nuevo en el tiempo de espera.',
     reply: 'En respuesta a', noReminders: 'Nada que recordar.',
+    noAssist: (l) => `Nadie necesita ayuda ahora (tu carga: ${l}).`,
+    assistOffer: (o) => `${o.to} · carga ${o.load} → ofrécele ayuda${o.agent ? ` (${o.agent})` : ''}`,
     reminder: (r) => `${r.to} · #${r.n} ${r.subject} · esperando ${r.waitedMin} min (carga ${r.load}, umbral ${r.thresholdMin} min) · aviso ${r.level} → ${r.action === 'user' ? 'avisa a la persona' : 'recordatorio directo'}${r.agent ? ` (${r.agent})` : ''}`,
   },
   en: {
@@ -40,6 +42,8 @@ const TEXT = {
     none: 'Nothing unread.', unreadFrom: (o, k) => `${o}: ${k} unread`, expects: 'expects from you',
     agent: 'Claude Code session', timeout: 'Nothing new within the timeout.',
     reply: 'In reply to', noReminders: 'Nothing to remind.',
+    noAssist: (l) => `Nobody needs help right now (your load: ${l}).`,
+    assistOffer: (o) => `${o.to} · load ${o.load} → offer help${o.agent ? ` (${o.agent})` : ''}`,
     reminder: (r) => `${r.to} · #${r.n} ${r.subject} · waiting ${r.waitedMin} min (load ${r.load}, threshold ${r.thresholdMin} min) · notice ${r.level} → ${r.action === 'user' ? 'tell the person' : 'direct reminder'}${r.agent ? ` (${r.agent})` : ''}`,
   },
 };
@@ -470,7 +474,7 @@ export function closeAll({ root, me }) {
 }
 
 /** The coordinator (only writer of wassup.json) sets the reminder mode and times. */
-export function configure({ root, by, mode, base, max }) {
+export function configure({ root, by, mode, base, max, assistMin, assistOwn, assistCooldown }) {
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
@@ -489,8 +493,71 @@ export function configure({ root, by, mode, base, max }) {
   }
   if (r.maxMin < r.baseMin) throw new WassupError('--max cannot be lower than --base.');
   plain.reminders = r;
+  const ac = { ...assistConfig(cfg) };
+  for (const [k, v, flag] of [
+    ['minLoad', assistMin, 'assist-min'],
+    ['ownMax', assistOwn, 'assist-own'],
+    ['cooldownMin', assistCooldown, 'assist-cooldown'],
+  ]) {
+    if (v === undefined) continue;
+    const x = Number(v);
+    if (!Number.isInteger(x) || x < 0) throw new WassupError(`--${flag}: a whole number.`);
+    ac[k] = x;
+  }
+  plain.assist = ac;
   writeAtomic(cfgFile, JSON.stringify(plain, null, 2) + '\n');
-  return r;
+  return { ...r, assist: ac };
+}
+
+// ---------- offers of help (by workload) ----------
+/**
+ * When I am nearly free and another session is overloaded, I offer to take work off it. Load is the same
+ * as for reminders (unread + answers expected from it). `minLoad`: from how much load a session counts as
+ * overloaded; `ownMax`: the most load I can have to offer; `cooldownMin`: minutes before offering the
+ * same session again. The overloaded one decides what to hand over, and which FILES change owner (the
+ * golden rule stays: one writer per file).
+ */
+export const ASSIST_DEFAULTS = { minLoad: 6, ownMax: 2, cooldownMin: 120 };
+
+function assistConfig(cfg) {
+  const a = { ...ASSIST_DEFAULTS, ...(cfg.assist ?? {}) };
+  const n = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  return { minLoad: n(a.minLoad, 6), ownMax: n(a.ownMax, 2), cooldownMin: n(a.cooldownMin, 120) };
+}
+const assistFile = (root, me) => path.join(root, `assist-${me}.json`);
+
+/** Sessions I could help now: overloaded, not offered recently, and only if I am free enough. */
+export function assist({ root, me, now = new Date() }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  const ac = assistConfig(cfg);
+  const boxes = allMailboxes(root, cfg);
+  const myLoad = loadOf(boxes, cfg.sessions, me);
+  if (myLoad > ac.ownMax) return { myLoad, offers: [] };
+  const f = assistFile(root, me);
+  const last = fs.existsSync(f) ? JSON.parse(read(f)) : {};
+  const offers = [];
+  for (const x of cfg.sessions) {
+    if (x === me) continue;
+    const load = loadOf(boxes, cfg.sessions, x);
+    if (load < ac.minLoad) continue;
+    const prev = last[x] ? new Date(last[x]).getTime() : 0;
+    if (now.getTime() - prev < ac.cooldownMin * 60000) continue;
+    const mf = mailboxFile(root, cfg, x);
+    offers.push({ to: x, agent: fs.existsSync(mf) ? agentOf(read(mf)) : null, load });
+  }
+  return { myLoad, offers: offers.sort((a, b) => b.load - a.load) };
+}
+
+/** Notes that I offered help to `to` now (assist-<me>.json: only I write it). */
+export function markAssist({ root, me, to, now = new Date() }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(to) || to === me) throw new WassupError('--mark: another session.');
+  const f = assistFile(root, me);
+  const last = fs.existsSync(f) ? JSON.parse(read(f)) : {};
+  last[to] = now.toISOString();
+  writeAtomic(f, JSON.stringify(last, null, 2) + '\n');
+  return last;
 }
 
 // ---------- command line ----------
@@ -519,6 +586,9 @@ const HELP = `wassup.mjs — mailbox helper for Wassup (one writer per file)
   remind   --root <shared> --me <me> --mark <to>#<n> --level <1|2|3>   note a notice as given
   remind   --root <shared> --me <me> --close-all             close everything pending now (migrating an old mailbox)
   config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
+           [--assist-min <load>] [--assist-own <load>] [--assist-cooldown <min>]
+  assist   --root <shared> --me <me> [--json]               who is overloaded and could use my help
+  assist   --root <shared> --me <me> --mark <other>          note that I offered (cooldown)
 «Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.
 send --re 4,6 marks the message as the answer to #4 and #6 of the recipient (stops their reminders).`;
 
@@ -594,8 +664,31 @@ async function main(argv) {
       return;
     }
     case 'config': {
-      const r = configure({ root, by: a.by, mode: a.mode, base: a.base, max: a.max });
-      return console.log(`ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min`);
+      const r = configure({
+        root,
+        by: a.by,
+        mode: a.mode,
+        base: a.base,
+        max: a.max,
+        assistMin: a['assist-min'],
+        assistOwn: a['assist-own'],
+        assistCooldown: a['assist-cooldown'],
+      });
+      return console.log(
+        `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min`,
+      );
+    }
+    case 'assist': {
+      const cfg = loadConfig(root);
+      if (a.mark) {
+        const r = markAssist({ root, me: a.me, to: String(a.mark) });
+        return console.log(`ok · ${Object.keys(r).join(', ')}`);
+      }
+      const r = assist({ root, me: a.me, now: a.now ? new Date(String(a.now)) : new Date() });
+      if (a.json) return console.log(JSON.stringify(r, null, 2));
+      if (!r.offers.length) return console.log(cfg.t.noAssist(r.myLoad));
+      for (const o of r.offers) console.log(cfg.t.assistOffer(o));
+      return;
     }
     default:
       throw new WassupError(`Unknown command «${cmd}».\n${HELP}`);

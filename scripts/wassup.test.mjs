@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ack, closeAll, configure, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
+import { ack, assist, closeAll, configure, markAssist, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-'));
@@ -266,4 +266,25 @@ test('recordatorios: «Espero de ti: nada» no pide respuesta; --close-all migra
   // Lo que se envíe después sí se recuerda.
   send({ root, from: 'pc', to: 'mac', subject: 'Nuevo', body: 'x', expect: 'algo', now: minutos(NOW, 5000) });
   assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 5200) }).map((r) => r.n), [3]);
+});
+
+// ---------- ofrecer ayuda por carga ----------
+test('ayuda: la sesión libre se ofrece a la sobrecargada, con pausa entre ofertas', () => {
+  const root = three();
+  // mac recibe 7 encargos de pc: carga 7 (≥ 6). pc2 está libre.
+  for (let i = 0; i < 7; i++) send({ root, from: 'pc', to: 'mac', subject: `t${i}`, body: 'x', now: NOW });
+  const r = assist({ root, me: 'pc2', now: NOW });
+  assert.equal(r.myLoad, 0);
+  assert.deepEqual(r.offers.map((o) => [o.to, o.load]), [['mac', 7]]);
+  // Quien ya está cargada no se ofrece: mac tiene 7.
+  assert.deepEqual(assist({ root, me: 'mac', now: NOW }).offers, []);
+  // Tras ofrecer, pausa (120 min por defecto) antes de volver a ofrecerse a la misma.
+  markAssist({ root, me: 'pc2', to: 'mac', now: NOW });
+  assert.deepEqual(assist({ root, me: 'pc2', now: minutos(NOW, 60) }).offers, []);
+  assert.equal(assist({ root, me: 'pc2', now: minutos(NOW, 121) }).offers.length, 1);
+  assert.ok(fs.existsSync(path.join(root, 'assist-pc2.json')));
+  // La coordinadora ajusta los umbrales.
+  configure({ root, by: 'pc', assistMin: 10 });
+  assert.deepEqual(assist({ root, me: 'pc2', now: minutos(NOW, 500) }).offers, []);
+  assert.throws(() => configure({ root, by: 'pc', assistOwn: -1 }), /whole number/);
 });
