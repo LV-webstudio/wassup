@@ -58,7 +58,7 @@ const TEXT = {
 const ALL = new Set(['all', 'todas', 'todos', '*']);
 const NOTHING = /^\s*(?:nada|ninguna?|nothing|none|n\/a|—|-)(?=[\s.,;:]|$)/i;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-export const VERSION = '0.9.0';
+export const VERSION = '0.9.1';
 
 export class WassupError extends Error {}
 
@@ -183,6 +183,7 @@ export function register({ root, by, name }) {
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
+  if (!by || by === true) throw new WassupError(`--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
   if (by !== coordinator) throw new WassupError(`Only the coordinator (${coordinator}) registers sessions.`);
   if (!NAME.test(name ?? '')) throw new WassupError('--name: lowercase letters, digits, - or _ (max 32).');
   const { t: _t, ...plain } = cfg;
@@ -518,6 +519,7 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
+  if (!by || by === true) throw new WassupError(`--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
   if (by !== coordinator) throw new WassupError(`Only the coordinator (${coordinator}) changes wassup.json.`);
   const { t: _t, ...plain } = cfg;
   const r = { ...remindConfig(cfg) };
@@ -1351,6 +1353,12 @@ async function main(argv) {
           `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} last #${s.lastMessage} ${s.lastDate ?? ''} · unread ${s.unread}${s.agent ? ` · ${s.agent}` : ''}${hl}${s.caps.length ? ` · [${s.caps.join(', ')}]` : ''}`,
         );
       }
+      const cfg = loadConfig(root);
+      console.log(
+        cfg.lang === 'es'
+          ? `incidencias: ${cfg.incidencias === true ? 'encendidas' : 'apagadas'}`
+          : `incidents: ${cfg.incidencias === true ? 'on' : 'off'}`,
+      );
       return;
     }
     case 'remind': {
@@ -1394,7 +1402,7 @@ async function main(argv) {
         incidents: a.incidents,
       });
       return console.log(
-        `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min · resources: ${JSON.stringify(r.recursos)}`,
+        `ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min · assist: load ≥ ${r.assist.minLoad}, own ≤ ${r.assist.ownMax}, every ${r.assist.cooldownMin} min · resources: ${JSON.stringify(r.recursos)} · incidents: ${r.incidencias ? 'on' : 'off'}`,
       );
     }
     case 'log': {
@@ -1426,8 +1434,16 @@ async function main(argv) {
       process.exitCode = r.code;
       if (a.quiet) return;
       if (a.json) return console.log(JSON.stringify(r, null, 2));
+      // `estado` only changes with two samples in a row (hysteresis): say so when this sample differs.
+      const es = loadConfig(root).lang === 'es';
+      const sample =
+        r.muestra !== r.estado
+          ? es
+            ? ` (esta muestra: ${r.muestra}; el estado cambia con 2 muestras seguidas)`
+            : ` (this sample: ${r.muestra}; the state changes after 2 samples in a row)`
+          : '';
       return console.log(
-        `${r.estado}${r.motivos.length ? ` · ${r.motivos.join('; ')}` : ''} · RAM ${r.ram.disponibleGB ?? '?'} GB · load ${r.cpu.cargaPorNucleo}/core · repo ${r.disco.repoLibreGB ?? '?'} GB · shared ${r.disco.compartidaLibreGB ?? '?'} GB · thermal ${r.termica.estado}${r.sent ? ` · sent #${r.sent}` : ''}`,
+        `${r.estado}${sample}${r.motivos.length ? ` · ${r.motivos.join('; ')}` : ''} · RAM ${r.ram.disponibleGB ?? '?'} GB · load ${r.cpu.cargaPorNucleo}/core · repo ${r.disco.repoLibreGB ?? '?'} GB · shared ${r.disco.compartidaLibreGB ?? '?'} GB · thermal ${r.termica.estado}${r.sent ? ` · sent #${r.sent}` : ''}`,
       );
     }
     case 'assist': {

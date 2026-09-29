@@ -281,3 +281,21 @@ test('sysctl en español: «used = 1568,25M» (coma decimal)', () => {
   assert.equal(parseSwapUsage('vm.swapusage: total = 4,00G  used = 1,25G  free = 2,75G'), 1.3);
   assert.equal(parseSwapUsage('nada'), null);
 });
+
+test('línea de health: si la muestra difiere del estado (histéresis), lo dice; config y status enseñan las incidencias; falta --by', () => {
+  const root = three();
+  const env = { ...process.env, WASSUP_FAKE_RAM_GB: '0.2', WASSUP_NO_DOCKER: '1' };
+  const w = (args, e = process.env) => {
+    try {
+      return execFileSync(process.execPath, [SCRIPT, ...args], { env: e, stdio: 'pipe' }).toString();
+    } catch (err) {
+      return String(err.stdout) + String(err.stderr);
+    }
+  };
+  assert.match(w(['health', '--root', root, '--me', 'mac'], env), /^ok \(esta muestra: saturado; el estado cambia con 2 muestras seguidas\) · RAM disponible 0,2 GB/);
+  assert.match(w(['health', '--root', root, '--me', 'mac'], env), /^saturado · RAM disponible 0,2 GB/);
+  assert.match(w(['config', '--root', root, '--by', 'pc', '--incidents', 'on']), /incidents: on/);
+  assert.match(w(['status', '--root', root]), /incidencias: encendidas\s*$/);
+  assert.match(w(['config', '--root', root, '--incidents', 'off']), /--by <coordinator> is missing \(the coordinator is «pc»\)/);
+  assert.match(w(['register', '--root', root, '--name', 'otra']), /--by <coordinator> is missing/);
+});

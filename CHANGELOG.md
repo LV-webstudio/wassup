@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1 · 2026-09-29
+- Found by the coordinator on the first real run: the `health` line says when this sample differs from the
+  state (hysteresis: it changes after two samples in a row); `config` shows `incidents: on|off` and `status` tells
+  whether incidents are on; `config` and `register` without `--by` say that `--by` is missing.
+
 ## 0.9.0 · 2026-09-29
 - **Resources** (`wassup.mjs health`, SKILL §5b / §5 bis): measures available RAM (`vm_stat` on macOS), swap,
   load per core, repo and shared-folder disk, temperature (best effort, never elevated) and the Docker VM; writes
