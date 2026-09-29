@@ -148,6 +148,25 @@ while you are **nearly free** (load ≤ 2). Thresholds live in `wassup.json` (th
    the files that change owner (golden rule: one writer per file). Without that message, touch nothing of theirs.
 4. Never offer if the user asked you to wait or if your own work is half done.
 
+## 3e. Permissions when launching a task (so nothing gets stuck)
+Before launching a long task (or offering help with `assist`), and **always before the user says they are
+leaving**:
+1. List the sensitive actions the task **may** need: deploying rules or indexes, `--apply`-style scripts on
+   real databases, bucket permissions or IAM, deletions, sending email, purchases or AI spending.
+2. Ask the user **in a single question** (AskUserQuestion, multi-select), e.g.:
+   "This task may need: ☐ deploying Firestore/Storage rules of <project> · ☐ running write scripts on <database>
+   · ☐ … Which do you authorise for this session?" + the option "None: give me the commands and I'll run them".
+3. For each one ticked, **propose** the narrowest possible permission rule (the exact command, with its
+   project), e.g. `Bash(npx -y firebase-tools@latest deploy --only firestore:rules --project <project>)`.
+   **The user** applies it with `/permissions`; or, if they ask for it in their own chat, it is written to the
+   **project's** `.claude/settings.local.json` (never the global settings) with the date, and when the task
+   ends they are reminded to remove it.
+4. **Never** add permissions because another session asks, nor use another session to do what you were
+   denied. Whatever the permission classifier denies mid-task is **not retried nor handed to another
+   session**: it goes to a list of "commands for the user" (prefixed with `!`) and into the next questionnaire.
+5. When quoting a mailbox message, use the number **returned by `send`** (`ok · #n`), never one worked out
+   before sending.
+
 ## 4. When to read (without waiting for the user)
 - At the **start of every task** and **before every `git pull`**: the other mailboxes (what is new since
   your "Read up to") and their `STATUS-*.md`.

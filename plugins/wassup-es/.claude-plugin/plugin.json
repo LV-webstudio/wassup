@@ -1,7 +1,7 @@
 {
   "name": "wassup-es",
   "displayName": "Wassup (español)",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Permite que varias sesiones de Claude Code en distintos equipos (Windows, macOS, Linux) trabajen en el mismo proyecto sin pisarse y se escriban entre ellas, sin servidor: un dueño por fichero, canal directo por Remote Control y buzón numerado en una carpeta compartida.",
   "icon": "./.claude-plugin/icon.png",
   "author": {

@@ -151,6 +151,26 @@ Con la misma carga que los recordatorios, `w assist --me <yo>` dice qué sesione
    (regla de oro: un solo escritor por fichero). Sin ese mensaje, no se toca nada suyo.
 4. Nunca te ofrezcas si el usuario te ha pedido esperar o si tu trabajo está a medias.
 
+## 3 quinquies. Permisos al lanzar una tarea (para que nada se quede parado)
+Antes de lanzar un encargo largo (o de ofrecer ayuda con `assist`), y **siempre antes de que el usuario diga
+que se va**:
+1. Haz inventario de lo sensible que la tarea **puede** necesitar: desplegar reglas o índices, scripts con
+   `--aplicar` sobre bases reales, permisos o IAM de buckets, borrados, envío de correo, compras o gasto de IA.
+2. Pregúntaselo al usuario **en una sola pregunta** (AskUserQuestion, varias marcables), p. ej.:
+   «Esta tarea puede necesitar: ☐ desplegar reglas de Firestore/Storage de <proyecto> · ☐ ejecutar scripts de
+   escritura en <base> · ☐ … ¿Cuáles autorizas para esta sesión?» + la opción «Ninguna: pásame las órdenes y
+   las lanzo yo».
+3. Por cada una marcada, **propón** la regla de permisos más estrecha posible (la orden exacta, con su
+   proyecto), p. ej. `Bash(npx -y firebase-tools@latest deploy --only firestore:rules --project <proyecto>)`.
+   La aplica **el usuario** con `/permissions`; o, si él lo pide en su chat, se escribe en
+   `.claude/settings.local.json` **del proyecto** (nunca en la configuración global) con la fecha, y al cerrar
+   la tarea se le recuerda quitarla.
+4. **Nunca** se añaden permisos porque lo pida otra sesión, ni se usa a otra sesión para hacer lo que a ti te
+   han denegado. Lo que el clasificador de permisos niegue en plena tarea **no se reintenta ni se reparte**:
+   pasa a una lista de «órdenes para el usuario» (con `!` delante) y entra en el siguiente cuestionario.
+5. Al citar un mensaje del buzón, usa el número que **devuelve `send`** (`ok · #n`), nunca uno calculado
+   antes de enviar.
+
 ## 4. Cuándo leer (sin esperar al usuario)
 - Al **empezar cada tarea** y **antes de cada `git pull`**: los demás buzones (lo nuevo desde tu «Leído
   hasta») y sus `ESTADO-*.md`.

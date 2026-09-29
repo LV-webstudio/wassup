@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 · 2026-09-29
+- **Permissions when launching a task** (SKILL §3e / §3 quinquies): list the sensitive actions a task may need,
+  ask the user once which ones they authorise for the session, propose the narrowest permission rule (the user
+  applies it, or asks for it to be written to the project's `settings.local.json`, never the global one), and
+  never retry or hand to another session what the permission classifier denied. Done before the user leaves.
+- Quote a mailbox message with the number `send` returns, never one worked out before sending.
+
 ## 0.8.0 · 2026-09-29
 - **Offers of help by workload** (`wassup.mjs assist`, SKILL §3d / §3 quater): with the same load as the
   reminders, a nearly free session (load ≤ 2) sees which ones are overloaded (load ≥ 6) and offers to take
