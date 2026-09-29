@@ -22,7 +22,7 @@ It came out of a real project: a PC with 8 GB of RAM writing code, and a Mac run
 test suite the PC could not fit in memory.
 
 ## Status
-Version 0.6.0 · packaged as a Claude Code plugin · field-tested with **three sessions on two machines**
+Version 0.7.0 · packaged as a Claude Code plugin · field-tested with **three sessions on two machines**
 (Windows 11 + macOS 13), 15 automated tests.
 
 ## Install

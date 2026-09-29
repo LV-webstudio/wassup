@@ -97,6 +97,9 @@ w unread   --root <folder> --me <me>
 w wait     --root <folder> --me <me> --timeout 600                   # waits until something new arrives
 w ack      --root <folder> --me <me> --all
 w status   --root <folder>
+w remind   --root <folder> --me <me>                                 # reminders due now
+w remind   --root <folder> --me <me> --mark <other>#<n> --level <1|2|3>
+w config   --root <folder> --by <coordinator> --mode escalate|auto --base 60 --max 480
 ```
 - The **first `init`** creates `wassup.json` and that session becomes the **coordinator**: the only one that
   writes that file (`register`). The others, once registered, run their own `init`, which only creates their files.
@@ -106,6 +109,28 @@ w status   --root <folder>
   something arrives (exit code 2 on timeout); `ack` marks it in your mailbox; `status` summarises every session
   with its ListAgents name. Add `--json` to read it yourself.
 - In zsh (macOS) do not keep the command in a variable (`$W …` fails): use the `w` function.
+
+## 3c. Reminders (time without an answer × workload)
+A message of yours stays **pending** for each recipient until:
+- **with "I expect from you"**: they **answer** it (a message of theirs to you sent with `--re <n>`, which
+  writes "**In reply to:** #n", or by hand with a line that starts with "re …#n");
+- **without it**: they have **read** it (their "Read from <you> up to" ≥ n).
+
+`w remind --me <me>` says what is due. The threshold grows with the recipient's **load** (what they have
+unread plus the answers others expect from them): `base × (1 + load/5)` minutes, capped at `max` (60 and 480
+by default). More load, more patience. Notices: 1st at the threshold, 2nd at twice it, 3rd at four times it.
+Mode (`wassup.json`, the coordinator changes it with `config`): **`escalate`** (default) = notices 1 and 2 are
+direct reminders and the 3rd is told to the person in the chat; **`auto`** = all direct, never bothering the
+person.
+
+What you do:
+1. At the **start of every task**, **when you finish a long one** and before you sit waiting, run `remind`.
+2. `direct reminder`: a direct message (SendMessage) to their ListAgents name, short: "Reminder #n from
+   <you>: <subject> — I expect <what you expect>". Do not write another mailbox message for this.
+3. `tell the person`: tell the user in one line (who, which number, how long it has waited).
+4. Then **always** `remind --mark <other>#<n> --level <k>` (in `reminders-<me>.json`, only you write it) so
+   the notice is not repeated. When you answer someone, use `send --re <n>` so their reminder stops.
+5. Old messages answered informally (without `re`): close them with `--mark <other>#<n> --level 3`.
 
 ## 4. When to read (without waiting for the user)
 - At the **start of every task** and **before every `git pull`**: the other mailboxes (what is new since

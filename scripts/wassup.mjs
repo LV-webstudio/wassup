@@ -14,6 +14,8 @@
 //   node wassup.mjs wait     --root <shared> --me <me> [--timeout <s>] [--interval <s>]
 //   node wassup.mjs ack      --root <shared> --me <me> (--all | --from <other> --upto <n>)
 //   node wassup.mjs status   --root <shared> [--json]
+//   node wassup.mjs remind   --root <shared> --me <me> [--json] [--mark <to>#<n> --level <k>]
+//   node wassup.mjs config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -27,6 +29,8 @@ const TEXT = {
     statusHead: (n) => `# Estado de ${n}\nActualizado: — · Commit probado: —\n\n## Resultado\n| Prueba / tarea | Resultado | Detalle |\n|---|---|---|\n`,
     none: 'Nada sin leer.', unreadFrom: (o, k) => `${o}: ${k} sin leer`, expects: 'espera de ti',
     agent: 'Sesión de Claude Code', timeout: 'Nada nuevo en el tiempo de espera.',
+    reply: 'En respuesta a', noReminders: 'Nada que recordar.',
+    reminder: (r) => `${r.to} · #${r.n} ${r.subject} · esperando ${r.waitedMin} min (carga ${r.load}, umbral ${r.thresholdMin} min) · aviso ${r.level} → ${r.action === 'user' ? 'avisa a la persona' : 'recordatorio directo'}${r.agent ? ` (${r.agent})` : ''}`,
   },
   en: {
     dir: 'mailbox', status: 'STATUS', proposals: 'from', title: 'Mailbox of', to: 'To', subject: 'Subject',
@@ -35,6 +39,8 @@ const TEXT = {
     statusHead: (n) => `# Status of ${n}\nUpdated: — · Commit tested: —\n\n## Result\n| Test / task | Result | Detail |\n|---|---|---|\n`,
     none: 'Nothing unread.', unreadFrom: (o, k) => `${o}: ${k} unread`, expects: 'expects from you',
     agent: 'Claude Code session', timeout: 'Nothing new within the timeout.',
+    reply: 'In reply to', noReminders: 'Nothing to remind.',
+    reminder: (r) => `${r.to} · #${r.n} ${r.subject} · waiting ${r.waitedMin} min (load ${r.load}, threshold ${r.thresholdMin} min) · notice ${r.level} → ${r.action === 'user' ? 'tell the person' : 'direct reminder'}${r.agent ? ` (${r.agent})` : ''}`,
   },
 };
 const ALL = new Set(['all', 'todas', 'todos', '*']);
@@ -71,6 +77,7 @@ export function parseMailbox(text) {
     const subject = (block.match(/^\*\*(?:Asunto|Subject):\*\* (.+)$/m) ?? [])[1] ?? '';
     const expect = (block.match(/^\*\*(?:Espero de ti|I expect from you):\*\* (.+)$/m) ?? [])[1] ?? '';
     out.push({
+      re: replyNumbers(block),
       n: Number(m[1]),
       date: m[2].trim(),
       commit: m[3] ?? null,
@@ -81,6 +88,20 @@ export function parseMailbox(text) {
     });
   });
   return out;
+}
+
+/**
+ * Numbers a message answers: its «**In reply to:** #4, #6» line (written by `send --re`) and, for messages
+ * written by hand, a line that starts with «re …» («re crmweb#4, #5 y #6»). They are numbers of the
+ * recipient's mailbox.
+ */
+export function replyNumbers(block) {
+  const nums = new Set();
+  for (const line of block.split('\n')) {
+    if (/^\*\*(?:En respuesta a|In reply to):\*\*/.test(line) || /^\s*re\s/i.test(line))
+      for (const m of line.matchAll(/#(\d+)/g)) nums.add(Number(m[1]));
+  }
+  return [...nums];
 }
 
 /** «Read from X up to: #N» of a mailbox (accepts Spanish and English): { x: N }. */
@@ -183,7 +204,7 @@ function stamp(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export function send({ root, from, to, subject, body, expect, commit, now }) {
+export function send({ root, from, to, subject, body, expect, commit, now, re }) {
   const cfg = loadConfig(root);
   const t = cfg.t;
   if (!cfg.sessions.includes(from)) throw new WassupError(`--from: «${from}» is not a session (run «init»).`);
@@ -205,8 +226,14 @@ export function send({ root, from, to, subject, body, expect, commit, now }) {
   const hash = !commit || commit === 'none' ? null : commit === 'auto' ? gitShortHead() : String(commit);
   const toLabel = targets.map((x) => (ALL.has(x) ? t.all : x)).join(', ');
   const head = `## #${n} · ${stamp(now)}${hash ? ` · commit ${hash}` : ''} · ${t.to}: ${toLabel}`;
+  // --re 4,6: the message answers #4 and #6 of the recipient's mailbox (stops their reminders).
+  const reNums = String(re ?? '')
+    .split(',')
+    .map((x) => Number(String(x).replace('#', '').trim()))
+    .filter((x) => Number.isInteger(x) && x > 0);
+  const reLine = reNums.length ? `**${t.reply}:** ${reNums.map((x) => `#${x}`).join(', ')}\n` : '';
   const msg =
-    `\n${head}\n**${t.subject}:** ${subject.trim()}\n\n${body.trim()}\n` +
+    `\n${head}\n**${t.subject}:** ${subject.trim()}\n${reLine}\n${body.trim()}\n` +
     (expect?.trim() ? `\n**${t.expect}:** ${expect.trim()}\n` : '') +
     '\n---\n';
   writeAtomic(file, text.replace(/\s*$/, '\n') + msg);
@@ -286,6 +313,161 @@ export function status({ root }) {
   });
 }
 
+// ---------- reminders ----------
+/**
+ * Reminders by waiting time and workload. A message of mine is pending for a recipient until:
+ *  - with «I expect from you»: that recipient ANSWERS it (a later message to me that lists its number in
+ *    «In reply to» or in a line starting with «re …»);
+ *  - without it: that recipient has READ it («Read from me up to» ≥ its number).
+ * The threshold grows with the recipient's load (their unread messages plus what others expect from them):
+ * a busy session gets more patience, never beyond `maxMin`. Notices: 1 at the threshold, 2 at twice it,
+ * 3 at four times it. In «escalate» mode the 3rd goes to the person; in «auto» mode every notice is a
+ * direct reminder and the person is never bothered.
+ */
+export const REMIND_DEFAULTS = { mode: 'escalate', baseMin: 60, maxMin: 480 };
+const LOAD_STEP = 5; // each 5 items of load add one more «base» of patience
+
+/** «2026-09-29 07:23» (send) or «29/09/2026 06:25» (written by hand), local time. */
+export function parseStamp(s) {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s ?? '');
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3], +iso[4], +iso[5]);
+  const es = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(s ?? '');
+  if (es) return new Date(+es[3], +es[2] - 1, +es[1], +(es[4] ?? 0), +(es[5] ?? 0));
+  return null;
+}
+
+function remindConfig(cfg) {
+  const r = { ...REMIND_DEFAULTS, ...(cfg.reminders ?? {}) };
+  return { mode: r.mode === 'auto' ? 'auto' : 'escalate', baseMin: Number(r.baseMin) || 60, maxMin: Number(r.maxMin) || 480 };
+}
+
+const remindFile = (root, me) => path.join(root, `reminders-${me}.json`);
+function loadReminded(root, me) {
+  const f = remindFile(root, me);
+  return fs.existsSync(f) ? JSON.parse(read(f)) : {};
+}
+
+/** Everything each session has sent, keyed by sender. */
+function allMailboxes(root, cfg) {
+  const out = {};
+  for (const s of cfg.sessions) {
+    const f = mailboxFile(root, cfg, s);
+    const text = fs.existsSync(f) ? read(f) : '';
+    out[s] = { messages: parseMailbox(text), acks: parseAcks(text) };
+  }
+  return out;
+}
+
+const addressedTo = (m, x) => m.to.some((y) => y === x || ALL.has(y));
+
+/** Is message `m` from `sender` still pending for `recipient`? */
+function isPending(boxes, sender, m, recipient) {
+  // No date check: hand-written stamps are approximate and a reply can look «earlier» than the question.
+  // Quoting the exact number is proof enough.
+  if (m.expect)
+    return !boxes[recipient].messages.some((r) => addressedTo(r, sender) && r.re.includes(m.n));
+  return (boxes[recipient].acks[sender] ?? 0) < m.n;
+}
+
+/** Load of a session: its unread messages plus the answers others expect from it. */
+export function loadOf(boxes, sessions, x) {
+  let load = 0;
+  for (const s of sessions) {
+    if (s === x) continue;
+    const upto = boxes[x].acks[s] ?? 0;
+    for (const m of boxes[s].messages) {
+      if (!addressedTo(m, x)) continue;
+      if (m.n > upto) load++;
+      else if (m.expect && isPending(boxes, s, m, x)) load++;
+    }
+  }
+  return load;
+}
+
+/** Reminders that are due now for messages sent by «me» (only notices not given yet). */
+export function remind({ root, me, now = new Date() }) {
+  const cfg = loadConfig(root);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  const rc = remindConfig(cfg);
+  const boxes = allMailboxes(root, cfg);
+  const given = loadReminded(root, me);
+  const out = [];
+  for (const m of boxes[me].messages) {
+    const recipients = m.to.some((y) => ALL.has(y)) ? cfg.sessions.filter((s) => s !== me) : m.to;
+    for (const x of recipients) {
+      if (!boxes[x] || !isPending(boxes, me, m, x)) continue;
+      const sent = parseStamp(m.date);
+      if (!sent) continue;
+      const waitedMin = Math.floor((now.getTime() - sent.getTime()) / 60000);
+      const load = loadOf(boxes, cfg.sessions, x);
+      const thresholdMin = Math.min(rc.maxMin, Math.round(rc.baseMin * (1 + load / LOAD_STEP)));
+      const level = waitedMin >= thresholdMin * 4 ? 3 : waitedMin >= thresholdMin * 2 ? 2 : waitedMin >= thresholdMin ? 1 : 0;
+      if (level === 0 || level <= (given[`${x}#${m.n}`] ?? 0)) continue;
+      const f = mailboxFile(root, cfg, x);
+      out.push({
+        to: x,
+        agent: fs.existsSync(f) ? agentOf(read(f)) : null,
+        n: m.n,
+        subject: m.subject,
+        expect: m.expect,
+        needs: m.expect ? 'answer' : 'read',
+        waitedMin,
+        load,
+        thresholdMin,
+        level,
+        action: level === 3 && rc.mode === 'escalate' ? 'user' : 'direct',
+      });
+    }
+  }
+  return out.sort((a, b) => b.level - a.level || b.waitedMin - a.waitedMin);
+}
+
+/**
+ * Notes that notice `level` for `<to>#<n>` was given (in reminders-<me>.json: only I write it). Entries
+ * that are no longer pending are dropped, so the file never grows.
+ */
+export function markReminded({ root, me, key, level }) {
+  const cfg = loadConfig(root);
+  const [to, n] = String(key ?? '').split('#');
+  if (!cfg.sessions.includes(to) || !Number.isInteger(Number(n))) throw new WassupError('--mark: <session>#<number>.');
+  const k = Number(level);
+  if (![1, 2, 3].includes(k)) throw new WassupError('--level: 1, 2 or 3.');
+  const boxes = allMailboxes(root, cfg);
+  const given = loadReminded(root, me);
+  given[`${to}#${Number(n)}`] = Math.max(given[`${to}#${Number(n)}`] ?? 0, k);
+  for (const key2 of Object.keys(given)) {
+    const [x, num] = key2.split('#');
+    const m = boxes[me].messages.find((mm) => mm.n === Number(num));
+    if (!m || !boxes[x] || !isPending(boxes, me, m, x)) delete given[key2];
+  }
+  writeAtomic(remindFile(root, me), JSON.stringify(given, null, 2) + '\n');
+  return given;
+}
+
+/** The coordinator (only writer of wassup.json) sets the reminder mode and times. */
+export function configure({ root, by, mode, base, max }) {
+  const cfgFile = path.join(root, 'wassup.json');
+  const cfg = loadConfig(root);
+  const coordinator = cfg.coordinator ?? cfg.sessions[0];
+  if (by !== coordinator) throw new WassupError(`Only the coordinator (${coordinator}) changes wassup.json.`);
+  const { t: _t, ...plain } = cfg;
+  const r = { ...remindConfig(cfg) };
+  if (mode !== undefined) {
+    if (!['escalate', 'auto'].includes(mode)) throw new WassupError('--mode: escalate or auto.');
+    r.mode = mode;
+  }
+  for (const [k, v] of [['baseMin', base], ['maxMin', max]]) {
+    if (v === undefined) continue;
+    const x = Number(v);
+    if (!Number.isInteger(x) || x < 1) throw new WassupError(`--${k === 'baseMin' ? 'base' : 'max'}: whole minutes.`);
+    r[k] = x;
+  }
+  if (r.maxMin < r.baseMin) throw new WassupError('--max cannot be lower than --base.');
+  plain.reminders = r;
+  writeAtomic(cfgFile, JSON.stringify(plain, null, 2) + '\n');
+  return r;
+}
+
 // ---------- command line ----------
 function args(argv) {
   const out = { _: [] };
@@ -308,7 +490,11 @@ const HELP = `wassup.mjs — mailbox helper for Wassup (one writer per file)
   wait     --root <shared> --me <me> [--timeout <s>] [--interval <s>]
   ack      --root <shared> --me <me> (--all | --from <other> --upto <n>)
   status   --root <shared> [--json]
-«Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.`;
+  remind   --root <shared> --me <me> [--json]               reminders due now (waiting time × recipient load)
+  remind   --root <shared> --me <me> --mark <to>#<n> --level <1|2|3>   note a notice as given
+  config   --root <shared> --by <coordinator> [--mode escalate|auto] [--base <min>] [--max <min>]
+«Read from X up to: #N» means «reviewed up to #N», including messages that were not addressed to you.
+send --re 4,6 marks the message as the answer to #4 and #6 of the recipient (stops their reminders).`;
 
 async function main(argv) {
   const a = args(argv);
@@ -338,7 +524,7 @@ async function main(argv) {
     }
     case 'send': {
       const body = a['body-file'] ? fs.readFileSync(String(a['body-file']), 'utf8') : a.body;
-      const r = send({ root, from: a.from, to: a.to, subject: a.subject, body, expect: a.expect, commit: a.commit });
+      const r = send({ root, from: a.from, to: a.to, subject: a.subject, body, expect: a.expect, commit: a.commit, re: a.re });
       return console.log(`ok · #${r.n} · ${r.file}`);
     }
     case 'unread': {
@@ -367,6 +553,22 @@ async function main(argv) {
           `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} last #${s.lastMessage} ${s.lastDate ?? ''} · unread ${s.unread}${s.agent ? ` · ${s.agent}` : ''}`,
         );
       return;
+    }
+    case 'remind': {
+      const cfg = loadConfig(root);
+      if (a.mark) {
+        const r = markReminded({ root, me: a.me, key: a.mark, level: a.level });
+        return console.log(`ok · ${Object.entries(r).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}`);
+      }
+      const r = remind({ root, me: a.me, now: a.now ? new Date(String(a.now)) : new Date() });
+      if (a.json) return console.log(JSON.stringify(r, null, 2));
+      if (!r.length) return console.log(cfg.t.noReminders);
+      for (const x of r) console.log(cfg.t.reminder(x));
+      return;
+    }
+    case 'config': {
+      const r = configure({ root, by: a.by, mode: a.mode, base: a.base, max: a.max });
+      return console.log(`ok · reminders: ${r.mode} · base ${r.baseMin} min · max ${r.maxMin} min`);
     }
     default:
       throw new WassupError(`Unknown command «${cmd}».\n${HELP}`);

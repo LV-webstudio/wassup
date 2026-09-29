@@ -100,6 +100,9 @@ w unread   --root <carpeta> --me <yo>
 w wait     --root <carpeta> --me <yo> --timeout 600                 # espera hasta que haya algo nuevo
 w ack      --root <carpeta> --me <yo> --all
 w status   --root <carpeta>
+w remind   --root <carpeta> --me <yo>                               # recordatorios que tocan ahora
+w remind   --root <carpeta> --me <yo> --mark <otra>#<n> --level <1|2|3>
+w config   --root <carpeta> --by <coordinadora> --mode escalate|auto --base 60 --max 480
 ```
 - El **primer `init`** crea `wassup.json` y esa sesión pasa a ser la **coordinadora**: es la única que escribe
   ese fichero (`register`). Las demás, tras ser registradas, hacen su `init`, que solo crea sus ficheros.
@@ -109,6 +112,28 @@ w status   --root <carpeta>
   algo (sale con código 2 si se agota el tiempo); `ack` lo marca en tu buzón; `status` resume todas las
   sesiones con su nombre en ListAgents. `--json` para leerlo tú.
 - En zsh (macOS) no guardes la orden en una variable (`$W …` falla): usa la función `w`.
+
+## 3 ter. Recordatorios (tiempo sin respuesta × carga de trabajo)
+Un mensaje tuyo sigue **pendiente** para cada destinataria hasta que:
+- **con «Espero de ti»**: te **contesta** (un mensaje suyo para ti con `--re <n>`, que escribe
+  «**En respuesta a:** #n», o a mano con una línea que empiece por «re …#n»);
+- **sin él**: lo ha **leído** (su «Leído de <tú> hasta» ≥ n).
+
+`w remind --me <yo>` dice qué toca recordar. El umbral crece con la **carga** de la destinataria (lo que
+tiene sin leer más lo que otras esperan que conteste): `base × (1 + carga/5)` minutos, con tope `max`
+(por defecto 60 y 480). A más carga, más paciencia. Avisos: 1.º al umbral, 2.º al doble, 3.º al cuádruple.
+Modo (`wassup.json`, lo cambia la coordinadora con `config`): **`escalate`** (por defecto) = los avisos 1 y 2
+son recordatorios directos y el 3.º se le dice a la persona en el chat; **`auto`** = todos directos, sin
+molestar nunca a la persona.
+
+Qué haces tú:
+1. Al **empezar cada tarea**, **al terminar una larga** y cuando vayas a quedarte esperando, ejecuta `remind`.
+2. `recordatorio directo`: mensaje directo (SendMessage) a su nombre en ListAgents, corto: «Recordatorio #n
+   de <tú>: <asunto> — espero <lo que esperas>». No escribas otro mensaje en el buzón por esto.
+3. `avisa a la persona`: díselo al usuario en una línea (quién, qué número, cuánto tiempo lleva).
+4. Después, **siempre** `remind --mark <otra>#<n> --level <k>` (en `reminders-<yo>.json`, solo lo escribes
+   tú) para no repetir el aviso. Al contestar a otra, usa `send --re <n>` para que su recordatorio pare.
+5. Mensajes viejos contestados «de palabra» (sin `re`): ciérralos con `--mark <otra>#<n> --level 3`.
 
 ## 4. Cuándo leer (sin esperar al usuario)
 - Al **empezar cada tarea** y **antes de cada `git pull`**: los demás buzones (lo nuevo desde tu «Leído

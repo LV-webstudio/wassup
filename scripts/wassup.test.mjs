@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ack, init, parseAcks, parseMailbox, register, send, status, unread, wait, WassupError } from './wassup.mjs';
+import { ack, configure, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-'));
@@ -185,4 +185,72 @@ test('no quedan ficheros temporales tras escribir', () => {
   send({ root, from: 'pc', to: 'mac', subject: 'x', body: 'x', commit: 'none' });
   ack({ root, me: 'mac', all: true });
   assert.deepEqual(fs.readdirSync(path.join(root, 'buzon')).filter((f) => f.endsWith('.tmp')), []);
+});
+
+// ---------- recordatorios ----------
+const minutos = (d, m) => new Date(d.getTime() + m * 60000);
+
+test('recordatorios: con «Espero de ti» hace falta contestar; sin él basta con leer', () => {
+  const root = three();
+  send({ root, from: 'pc', to: 'mac', subject: 'Batería', body: 'Pasa la batería', expect: 'el resultado', now: NOW });
+  send({ root, from: 'pc', to: 'mac', subject: 'Aviso', body: 'Solo para que lo sepas', now: NOW });
+  // Carga de mac: los 2 sin leer → umbral 60 × (1 + 2/5) = 84 min.
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 80) }), []);
+  let r = remind({ root, me: 'pc', now: minutos(NOW, 85) });
+  assert.deepEqual(r.map((x) => [x.n, x.needs, x.level, x.thresholdMin]), [[1, 'answer', 1, 84], [2, 'read', 1, 84]]);
+  // Leer quita el recordatorio del aviso, pero no el de la petición.
+  ack({ root, me: 'mac', all: true });
+  r = remind({ root, me: 'pc', now: minutos(NOW, 85) });
+  assert.deepEqual(r.map((x) => x.n), [1]);
+  // Contestar con --re lo quita del todo.
+  send({ root, from: 'mac', to: 'pc', subject: 'Hecho', body: '143 en verde', re: '1', now: minutos(NOW, 30) });
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 500) }), []);
+});
+
+test('recordatorios: una respuesta escrita a mano («re pc#4, #5») también cuenta', () => {
+  assert.deepEqual(replyNumbers('re pc#4, #5 y #6 · lo que sea\notra línea #9').sort(), [4, 5, 6]);
+  assert.deepEqual(replyNumbers('**En respuesta a:** #2'), [2]);
+  assert.deepEqual(replyNumbers('texto con #7 suelto'), []);
+});
+
+test('recordatorios: más carga, más paciencia (con tope) y escalado a la persona', () => {
+  const root = three();
+  send({ root, from: 'pc', to: 'mac', subject: 'Petición', body: 'x', expect: 'algo', now: NOW });
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 71) }), []);
+  const libre = remind({ root, me: 'pc', now: minutos(NOW, 73) })[0];
+  assert.equal(libre.thresholdMin, 72); // carga 1 (esta misma): 60 × (1 + 1/5)
+  // pc2 le carga 9 mensajes sin leer a mac: el umbral sube y el aviso aún no toca.
+  for (let i = 0; i < 9; i++) send({ root, from: 'pc2', to: 'mac', subject: `c${i}`, body: 'x', now: NOW });
+  // Carga 10 (9 de pc2 + esta): 60 × (1 + 10/5) = 180 min.
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 179) }), []);
+  const r = remind({ root, me: 'pc', now: minutos(NOW, 180) })[0];
+  assert.deepEqual([r.load, r.thresholdMin, r.level, r.action], [10, 180, 1, 'direct']);
+  assert.equal(remind({ root, me: 'pc', now: minutos(NOW, 360) })[0].level, 2);
+  const tarde = remind({ root, me: 'pc', now: minutos(NOW, 720) })[0];
+  assert.equal(tarde.level, 3);
+  assert.equal(tarde.action, 'user');
+  // El tope: con carga enorme nunca pasa de maxMin.
+  configure({ root, by: 'pc', base: 60, max: 90 });
+  assert.equal(remind({ root, me: 'pc', now: minutos(NOW, 100) })[0].thresholdMin, 90);
+});
+
+test('recordatorios: modo automático nunca avisa a la persona; lo dado no se repite', () => {
+  const root = three();
+  configure({ root, by: 'pc', mode: 'auto' });
+  assert.throws(() => configure({ root, by: 'mac', mode: 'auto' }), /coordinator/);
+  send({ root, from: 'pc', to: 'mac', subject: 'P', body: 'x', expect: 'y', now: NOW });
+  const r = remind({ root, me: 'pc', now: minutos(NOW, 1000) })[0];
+  assert.equal(r.level, 3);
+  assert.equal(r.action, 'direct');
+  markReminded({ root, me: 'pc', key: 'mac#1', level: 3 });
+  assert.deepEqual(remind({ root, me: 'pc', now: minutos(NOW, 2000) }), []);
+  // Solo escribe su propio fichero.
+  assert.ok(fs.existsSync(path.join(root, 'reminders-pc.json')));
+  assert.ok(!fs.existsSync(path.join(root, 'reminders-mac.json')));
+});
+
+test('recordatorios: fechas del buzón escritas a mano (dd/mm/aaaa hh:mm)', () => {
+  assert.deepEqual(parseStamp('29/09/2026 06:25'), new Date(2026, 8, 29, 6, 25));
+  assert.deepEqual(parseStamp('2026-09-29 07:23'), new Date(2026, 8, 29, 7, 23));
+  assert.equal(parseStamp('ayer'), null);
 });
