@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2 · 2026-09-29
+- **Sharing out work, "free" and resources** (SKILL §5b / §5 bis), guide only: write "free" when a task ends;
+  one capabilities line in your own mailbox (never secrets); the coordinator hands work to a free session before
+  doing it itself or launching its own agent (never production or credential-bound work); check available
+  memory and disk before anything heavy (`vm_stat` on macOS, not `os.freemem()`), and send
+  `[resources] saturated` instead of launching it. The `w health` command comes in 0.9.0.
+
 ## 0.8.1 · 2026-09-29
 - **Permissions when launching a task** (SKILL §3e / §3 quinquies): list the sensitive actions a task may need,
   ask the user once which ones they authorise for the session, propose the narrowest permission rule (the user

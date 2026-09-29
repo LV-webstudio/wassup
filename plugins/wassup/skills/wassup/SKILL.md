@@ -187,6 +187,33 @@ leaving**:
    replies.
 4. Each session saves to its memory whatever changes about the split of work.
 
+## 5b. Sharing out work, "free" and resources (the coordinator doesn't work while the others watch)
+- **"free":** when you finish a task, write the result and the word **"free"** in your mailbox and send a
+  direct notice. Nobody should have to say "the Mac is idle".
+- **Capabilities** (one line in your own mailbox, next to `--agent`, kept up to date): what your machine has —
+  RAM and cores, browsers or test devices, repositories, **which credentials** (only "has the service account
+  for X", never the account itself). That tells the coordinator who can take what.
+- **The coordinator** (the user's rule, 2026-09-29): before doing something itself or launching its own agent,
+  it checks who is "free" and hands the work out. A **portable** task: context, shared paths (never paths that
+  exist on one machine only), what "done" means and where to leave the result. **Not handed out:** anything
+  that touches production and the user launches, or that needs files or credentials the other machine lacks
+  (handing it over would bypass permissions).
+- **Resources, before anything heavy** (build, e2e suite, `npm ci`, a wave of agents, a deploy): check the
+  **available** memory and the disk.
+  - macOS: `vm_stat` (free + inactive + speculative + purgeable, × page size). ⚠ `os.freemem()` is wrong on
+    macOS: it reports far less than is really available.
+  - Windows: `Get-CimInstance Win32_OperatingSystem` → `FreePhysicalMemory`. Linux: `MemAvailable` in
+    `/proc/meminfo`. Disk: `df -h` or `Get-PSDrive`, for the repo **and** the shared folder.
+  - Under **1 GB** available, or disk below 5 GB (repo) or 2 GB (shared), you are **saturated**: launch nothing
+    heavy; let what is running finish and send the coordinator `[resources] saturated: <reason>` with "I expect
+    from you: reassign or wait" (one notice per episode, and `[resources] ok` once you recover). Between 1 and
+    2 GB, launch it only if it is the only heavy job on that machine.
+  - Two sessions on the same machine measure the same thing: only one sends the notice.
+  - **Never** close the user's programs or kill other sessions' processes, nor ask another session to: if
+    memory must be freed, tell the user the exact command.
+- The `w health` command (automatic measurement, `health-<me>.json`, states with hysteresis and a column in
+  `status`) arrives in 0.9.0; until then, do this by hand.
+
 ## 6. Safeguards
 - Clean working tree before every pull (`git status`); if there are changes, report them, do not discard them.
 - `--ff-only` on every pull; push disabled wherever no code is written.

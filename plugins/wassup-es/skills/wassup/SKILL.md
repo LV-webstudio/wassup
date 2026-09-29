@@ -190,6 +190,33 @@ que se va**:
    un `.patch` en `desde-<nombre>/`). La dueña del código lo aplica con su commit y contesta.
 4. Cada sesión guarda en su memoria lo que cambie del reparto.
 
+## 5 bis. Reparto, «libre» y recursos (la coordinadora no trabaja mientras las demás miran)
+- **«libre»:** al terminar un encargo, escribe el resultado y la palabra **«libre»** en tu buzón y avisa por el
+  directo. Así nadie tiene que decir «el Mac está parado».
+- **Capacidades** (una línea en tu propio buzón, junto a `--agent`, y al día): qué tiene tu equipo — RAM y
+  núcleos, navegadores o dispositivos de prueba, repositorios, **qué credenciales** (solo «tiene la cuenta de
+  servicio de X», nunca la cuenta). Con eso la coordinadora sabe a quién puede pasar cada cosa.
+- **La coordinadora** (norma de Lorenzo, 29-09-2026): antes de hacer algo ella misma o de lanzar un agente
+  propio, mira quién está «libre» y reparte. Encargo **portátil**: contexto, rutas compartidas (nunca rutas
+  locales de un solo equipo), criterio de «hecho» y dónde dejar el resultado. **No se reparte** lo que toca
+  producción y lanza el usuario, ni lo que necesita ficheros o credenciales que el otro equipo no tiene
+  (repartirlo sería saltarse permisos).
+- **Recursos, antes de algo pesado** (build, batería e2e, `npm ci`, oleada de agentes, despliegue): mira la
+  memoria **disponible** y el disco.
+  - macOS: `vm_stat` (libre + inactiva + especulativa + purgable, × tamaño de página). ⚠ `os.freemem()` no
+    sirve en macOS: da mucho menos de lo que hay.
+  - Windows: `Get-CimInstance Win32_OperatingSystem` → `FreePhysicalMemory`. Linux: `MemAvailable` en
+    `/proc/meminfo`. Disco: `df -h` o `Get-PSDrive`, del repo **y** de la carpeta compartida.
+  - Con **menos de 1 GB** disponible, o disco por debajo de 5 GB (repo) o 2 GB (compartida), estás
+    **saturada**: no lances nada pesado nuevo; deja terminar lo que corre y manda a la coordinadora
+    `[recursos] saturado: <motivo>` con «Espero de ti: reparto o espera» (un solo aviso por episodio, y
+    `[recursos] ok` al recuperarte). Entre 1 y 2 GB, lánzalo solo si es lo único pesado en ese equipo.
+  - Dos sesiones en el mismo equipo miden lo mismo: avisa solo una.
+  - **Nunca** cierres programas del usuario ni mates procesos de otras sesiones, ni se lo pidas a otra: si hay
+    que liberar memoria, díselo al usuario con la orden concreta.
+- El comando `w health` (medición automática, `salud-<yo>.json`, estados con histéresis y columna en
+  `status`) llegará en la 0.9.0; hasta entonces, esto se hace a mano.
+
 ## 6. Protecciones
 - Árbol limpio antes de cada pull (`git status`); si hay cambios, se avisa, no se descartan.
 - `--ff-only` en todos los pulls; push desactivado donde no se programa.
