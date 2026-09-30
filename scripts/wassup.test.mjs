@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ack, assist, closeAll, configure, markAssist, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError } from './wassup.mjs';
+import { ack, assist, closeAll, configure, markAssist, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError, idiomaDeSalida } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-'));
@@ -287,4 +287,26 @@ test('ayuda: la sesión libre se ofrece a la sobrecargada, con pausa entre ofert
   configure({ root, by: 'pc', assistMin: 10 });
   assert.deepEqual(assist({ root, me: 'pc2', now: minutos(NOW, 500) }).offers, []);
   assert.throws(() => configure({ root, by: 'pc', assistOwn: -1 }), /whole number/);
+});
+
+test('errores en el idioma del proyecto (norma: lo que lee el usuario, en su idioma)', () => {
+  const es = tmp();
+  init({ root: es, name: 'pc', lang: 'es' });
+  const en = tmp();
+  init({ root: en, name: 'pc', lang: 'en' });
+  assert.equal(idiomaDeSalida(['send', '--root', es], {}), 'es');
+  assert.equal(idiomaDeSalida(['send', '--root', en], {}), 'en');
+  // Sin proyecto: WASSUP_LANG y, si no, el idioma del sistema.
+  assert.equal(idiomaDeSalida(['send', '--root', tmp()], { WASSUP_LANG: 'en' }), 'en');
+  assert.equal(idiomaDeSalida([], { LANG: 'es_ES.UTF-8' }), 'es');
+  const e = new WassupError('--to: una sesión no se escribe a sí misma.', '--to: a session does not write to itself.');
+  assert.equal(e.message, '--to: a session does not write to itself.');
+  assert.equal(e.texto('es'), '--to: una sesión no se escribe a sí misma.');
+  assert.equal(new WassupError('solo uno').texto('en'), 'solo uno');
+  try {
+    send({ root: es, from: 'pc', to: 'pc', subject: 's', body: 'b' });
+    assert.fail('tenía que fallar');
+  } catch (err) {
+    assert.match(err.texto('es'), /no se escribe a sí misma/);
+  }
 });

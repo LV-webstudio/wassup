@@ -296,6 +296,6 @@ test('línea de health: si la muestra difiere del estado (histéresis), lo dice;
   assert.match(w(['health', '--root', root, '--me', 'mac'], env), /^saturado · RAM disponible 0,2 GB/);
   assert.match(w(['config', '--root', root, '--by', 'pc', '--incidents', 'on']), /incidents: on/);
   assert.match(w(['status', '--root', root]), /incidencias: encendidas\s*$/);
-  assert.match(w(['config', '--root', root, '--incidents', 'off']), /--by <coordinator> is missing \(the coordinator is «pc»\)/);
-  assert.match(w(['register', '--root', root, '--name', 'otra']), /--by <coordinator> is missing/);
+  assert.match(w(['config', '--root', root, '--incidents', 'off']), /Falta --by <coordinadora> \(la coordinadora es «pc»\)/);
+  assert.match(w(['register', '--root', root, '--name', 'otra']), /Falta --by <coordinadora>/);
 });

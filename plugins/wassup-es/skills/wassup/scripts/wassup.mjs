@@ -60,7 +60,40 @@ const NOTHING = /^\s*(?:nada|ninguna?|nothing|none|n\/a|—|-)(?=[\s.,;:]|$)/i;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const VERSION = '0.9.1';
 
-export class WassupError extends Error {}
+/**
+ * Error para quien usa wassup: en español y en inglés. `message` va en inglés (lo que miran las pruebas);
+ * al salir por pantalla se elige el idioma del proyecto (idiomaDeSalida). Con un solo texto, vale para los dos.
+ */
+export class WassupError extends Error {
+  constructor(es, en = es) {
+    super(en);
+    this.es = es;
+    this.en = en;
+  }
+  texto(lang) {
+    return lang === 'es' ? this.es : this.en;
+  }
+}
+
+/**
+ * Idioma de los errores: el del wassup.json de --root si lo hay; si no, WASSUP_LANG; si no, el del
+ * sistema (es si empieza por «es»); en otro caso, inglés.
+ */
+export function idiomaDeSalida(argv, env = process.env) {
+  const i = argv.indexOf('--root');
+  const root = i >= 0 ? argv[i + 1] : null;
+  if (root) {
+    try {
+      const lang = JSON.parse(read(path.join(root, 'wassup.json'))).lang;
+      if (lang === 'es' || lang === 'en') return lang;
+    } catch {
+      /* sin wassup.json todavía */
+    }
+  }
+  if (env.WASSUP_LANG === 'es' || env.WASSUP_LANG === 'en') return env.WASSUP_LANG;
+  const sis = String(env.LANG || env.LC_ALL || Intl.DateTimeFormat().resolvedOptions().locale || '');
+  return /^es/i.test(sis) ? 'es' : 'en';
+}
 
 // ---------- files ----------
 /** Write the whole file at once (temp file + rename): nobody ever reads half a message. */
@@ -73,7 +106,7 @@ const read = (file) => fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 
 export function loadConfig(root) {
   const f = path.join(root, 'wassup.json');
-  if (!fs.existsSync(f)) throw new WassupError(`No wassup.json in ${root}: run «init» first.`);
+  if (!fs.existsSync(f)) throw new WassupError(`No hay wassup.json en ${root}: ejecuta antes «init».`, `No wassup.json in ${root}: run «init» first.`);
   const cfg = JSON.parse(read(f));
   return { ...cfg, t: TEXT[cfg.lang] ?? TEXT.en };
 }
@@ -148,8 +181,8 @@ function setAcks(text, cfg, acks) {
  * on only the coordinator adds sessions (`register`), so wassup.json keeps a single writer.
  */
 export function init({ root, name, lang = 'es', agent, caps }) {
-  if (!NAME.test(name ?? '')) throw new WassupError('--name: lowercase letters, digits, - or _ (max 32).');
-  if (!TEXT[lang]) throw new WassupError('--lang: es or en.');
+  if (!NAME.test(name ?? '')) throw new WassupError('--name: minúsculas, cifras, - o _ (como mucho 32).', '--name: lowercase letters, digits, - or _ (max 32).');
+  if (!TEXT[lang]) throw new WassupError('--lang: es o en.', '--lang: es or en.');
   fs.mkdirSync(root, { recursive: true });
   const cfgFile = path.join(root, 'wassup.json');
   let cfg;
@@ -160,7 +193,7 @@ export function init({ root, name, lang = 'es', agent, caps }) {
     cfg = JSON.parse(read(cfgFile));
     if (!cfg.sessions.includes(name)) {
       throw new WassupError(
-        `«${name}» is not registered. Ask the coordinator (${cfg.coordinator ?? cfg.sessions[0]}) to run: register --name ${name}`,
+        `«${name}» no está dada de alta. Pide a la coordinadora (${cfg.coordinator ?? cfg.sessions[0]}) que ejecute: register --name ${name}`, `«${name}» is not registered. Ask the coordinator (${cfg.coordinator ?? cfg.sessions[0]}) to run: register --name ${name}`,
       );
     }
   }
@@ -183,9 +216,9 @@ export function register({ root, by, name }) {
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
-  if (!by || by === true) throw new WassupError(`--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
-  if (by !== coordinator) throw new WassupError(`Only the coordinator (${coordinator}) registers sessions.`);
-  if (!NAME.test(name ?? '')) throw new WassupError('--name: lowercase letters, digits, - or _ (max 32).');
+  if (!by || by === true) throw new WassupError(`Falta --by <coordinadora> (la coordinadora es «${coordinator}»).`, `--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
+  if (by !== coordinator) throw new WassupError(`Solo la coordinadora (${coordinator}) da de alta sesiones.`, `Only the coordinator (${coordinator}) registers sessions.`);
+  if (!NAME.test(name ?? '')) throw new WassupError('--name: minúsculas, cifras, - o _ (como mucho 32).', '--name: lowercase letters, digits, - or _ (max 32).');
   const { t: _t, ...plain } = cfg;
   if (!plain.sessions.includes(name)) {
     plain.sessions.push(name);
@@ -225,17 +258,17 @@ function stamp(d = new Date()) {
 export function send({ root, from, to, subject, body, expect, commit, now, re }) {
   const cfg = loadConfig(root);
   const t = cfg.t;
-  if (!cfg.sessions.includes(from)) throw new WassupError(`--from: «${from}» is not a session (run «init»).`);
-  if (!subject?.trim()) throw new WassupError('--subject is required.');
-  if (!body?.trim()) throw new WassupError('--body or --body-file is required.');
+  if (!cfg.sessions.includes(from)) throw new WassupError(`--from: «${from}» no es una sesión (ejecuta «init»).`, `--from: «${from}» is not a session (run «init»).`);
+  if (!subject?.trim()) throw new WassupError('Falta --subject.', '--subject is required.');
+  if (!body?.trim()) throw new WassupError('Falta --body o --body-file.', '--body or --body-file is required.');
   const targets = String(to ?? '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (!targets.length) throw new WassupError('--to is required (a session, several separated by commas, or all).');
+  if (!targets.length) throw new WassupError('Falta --to (una sesión, varias separadas por comas, o all).', '--to is required (a session, several separated by commas, or all).');
   for (const x of targets) {
-    if (!ALL.has(x) && !cfg.sessions.includes(x)) throw new WassupError(`--to: «${x}» is not a session.`);
-    if (x === from) throw new WassupError('--to: a session does not write to itself.');
+    if (!ALL.has(x) && !cfg.sessions.includes(x)) throw new WassupError(`--to: «${x}» no es una sesión.`, `--to: «${x}» is not a session.`);
+    if (x === from) throw new WassupError('--to: una sesión no se escribe a sí misma.', '--to: a session does not write to itself.');
   }
   const file = mailboxFile(root, cfg, from);
   const text = read(file);
@@ -304,9 +337,9 @@ export function ack({ root, me, from, upto, all }) {
       if (last) acks[other] = Math.max(acks[other] ?? 0, last);
     }
   } else {
-    if (!cfg.sessions.includes(from)) throw new WassupError(`--from: «${from}» is not a session.`);
+    if (!cfg.sessions.includes(from)) throw new WassupError(`--from: «${from}» no es una sesión.`, `--from: «${from}» is not a session.`);
     const n = Number(upto);
-    if (!Number.isInteger(n) || n < 0) throw new WassupError('--upto: a message number.');
+    if (!Number.isInteger(n) || n < 0) throw new WassupError('--upto: un número de mensaje.', '--upto: a message number.');
     acks[from] = n;
   }
   writeAtomic(file, setAcks(text, cfg, acks));
@@ -418,7 +451,7 @@ export function loadOf(boxes, sessions, x) {
 /** Reminders that are due now for messages sent by «me» (only notices not given yet). */
 export function remind({ root, me, now = new Date() }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» no es una sesión.`, `--me: «${me}» is not a session.`);
   const rc = remindConfig(cfg);
   const boxes = allMailboxes(root, cfg);
   const given = loadReminded(root, me);
@@ -476,9 +509,9 @@ export function markReminded({ root, me, key, level }) {
     return given;
   }
   const [to, n] = String(key ?? '').split('#');
-  if (!cfg.sessions.includes(to) || !Number.isInteger(Number(n))) throw new WassupError('--mark: <session>#<number>.');
+  if (!cfg.sessions.includes(to) || !Number.isInteger(Number(n))) throw new WassupError('--mark: <sesión>#<número>.', '--mark: <session>#<number>.');
   const k = Number(level);
-  if (![1, 2, 3].includes(k)) throw new WassupError('--level: 1, 2 or 3.');
+  if (![1, 2, 3].includes(k)) throw new WassupError('--level: 1, 2 o 3.', '--level: 1, 2 or 3.');
   const boxes = allMailboxes(root, cfg);
   const given = loadReminded(root, me);
   given[`${to}#${Number(n)}`] = Math.max(given[`${to}#${Number(n)}`] ?? 0, k);
@@ -498,7 +531,7 @@ export function markReminded({ root, me, key, level }) {
  */
 export function closeAll({ root, me }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» no es una sesión.`, `--me: «${me}» is not a session.`);
   const boxes = allMailboxes(root, cfg);
   const given = loadReminded(root, me);
   let closed = 0;
@@ -519,21 +552,21 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
   const cfgFile = path.join(root, 'wassup.json');
   const cfg = loadConfig(root);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
-  if (!by || by === true) throw new WassupError(`--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
-  if (by !== coordinator) throw new WassupError(`Only the coordinator (${coordinator}) changes wassup.json.`);
+  if (!by || by === true) throw new WassupError(`Falta --by <coordinadora> (la coordinadora es «${coordinator}»).`, `--by <coordinator> is missing (the coordinator is «${coordinator}»).`);
+  if (by !== coordinator) throw new WassupError(`Solo la coordinadora (${coordinator}) cambia wassup.json.`, `Only the coordinator (${coordinator}) changes wassup.json.`);
   const { t: _t, ...plain } = cfg;
   const r = { ...remindConfig(cfg) };
   if (mode !== undefined) {
-    if (!['escalate', 'auto'].includes(mode)) throw new WassupError('--mode: escalate or auto.');
+    if (!['escalate', 'auto'].includes(mode)) throw new WassupError('--mode: escalate o auto.', '--mode: escalate or auto.');
     r.mode = mode;
   }
   for (const [k, v] of [['baseMin', base], ['maxMin', max]]) {
     if (v === undefined) continue;
     const x = Number(v);
-    if (!Number.isInteger(x) || x < 1) throw new WassupError(`--${k === 'baseMin' ? 'base' : 'max'}: whole minutes.`);
+    if (!Number.isInteger(x) || x < 1) throw new WassupError(`--${k === 'baseMin' ? 'base' : 'max'}: minutos enteros.`, `--${k === 'baseMin' ? 'base' : 'max'}: whole minutes.`);
     r[k] = x;
   }
-  if (r.maxMin < r.baseMin) throw new WassupError('--max cannot be lower than --base.');
+  if (r.maxMin < r.baseMin) throw new WassupError('--max no puede ser menor que --base.', '--max cannot be lower than --base.');
   plain.reminders = r;
   const ac = { ...assistConfig(cfg) };
   for (const [k, v, flag] of [
@@ -543,7 +576,7 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
   ]) {
     if (v === undefined) continue;
     const x = Number(v);
-    if (!Number.isInteger(x) || x < 0) throw new WassupError(`--${flag}: a whole number.`);
+    if (!Number.isInteger(x) || x < 0) throw new WassupError(`--${flag}: un número entero.`, `--${flag}: a whole number.`);
     ac[k] = x;
   }
   plain.assist = ac;
@@ -551,12 +584,12 @@ export function configure({ root, by, mode, base, max, assistMin, assistOwn, ass
   for (const [k, v] of Object.entries(recursos)) {
     if (v === undefined) continue;
     const x = Number(v);
-    if (!(k in RESOURCES_DEFAULTS) || !Number.isFinite(x) || x < 0) throw new WassupError(`recursos.${k}: a number ≥ 0.`);
+    if (!(k in RESOURCES_DEFAULTS) || !Number.isFinite(x) || x < 0) throw new WassupError(`recursos.${k}: un número ≥ 0.`, `recursos.${k}: a number ≥ 0.`);
     rs[k] = x;
   }
   plain.recursos = rs;
   if (incidents !== undefined) {
-    if (!['on', 'off', true, false].includes(incidents)) throw new WassupError('--incidents: on or off.');
+    if (!['on', 'off', true, false].includes(incidents)) throw new WassupError('--incidents: on u off.', '--incidents: on or off.');
     plain.incidencias = incidents === 'on' || incidents === true;
   }
   writeAtomic(cfgFile, JSON.stringify(plain, null, 2) + '\n');
@@ -583,7 +616,7 @@ const assistFile = (root, me) => path.join(root, `assist-${me}.json`);
 /** Sessions I could help now: overloaded, not offered recently, and only if I am free enough. */
 export function assist({ root, me, now = new Date() }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» no es una sesión.`, `--me: «${me}» is not a session.`);
   const ac = assistConfig(cfg);
   const boxes = allMailboxes(root, cfg);
   const myLoad = loadOf(boxes, cfg.sessions, me);
@@ -606,7 +639,7 @@ export function assist({ root, me, now = new Date() }) {
 /** Notes that I offered help to `to` now (assist-<me>.json: only I write it). */
 export function markAssist({ root, me, to, now = new Date() }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(to) || to === me) throw new WassupError('--mark: another session.');
+  if (!cfg.sessions.includes(to) || to === me) throw new WassupError('--mark: otra sesión.', '--mark: another session.');
   const f = assistFile(root, me);
   const last = fs.existsSync(f) ? JSON.parse(read(f)) : {};
   last[to] = now.toISOString();
@@ -894,7 +927,7 @@ function freeSince(boxes, sessions, me) {
  */
 export async function health({ root, me, busy, needs, now = new Date(), sample, repo, send: doSend = true }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» no es una sesión.`, `--me: «${me}» is not a session.`);
   const rec = resourcesConfig(cfg);
   const coordinator = cfg.coordinator ?? cfg.sessions[0];
   const prev = loadHealth(root, cfg, me);
@@ -1080,16 +1113,16 @@ export function scrub(text) {
  */
 export function logIncident({ root, me, tipo, texto, claudeCode, now = new Date() }) {
   const cfg = loadConfig(root);
-  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» is not a session.`);
+  if (!cfg.sessions.includes(me)) throw new WassupError(`--me: «${me}» no es una sesión.`, `--me: «${me}» is not a session.`);
   if (cfg.incidencias !== true)
     throw new WassupError(
       cfg.lang === 'es'
         ? 'Las incidencias están apagadas en este proyecto (opt-in): las enciende la coordinadora con «config --incidents on».'
         : 'Incidents are off for this project (opt-in): the coordinator enables them with «config --incidents on».',
     );
-  if (!INCIDENT_TYPES.includes(tipo)) throw new WassupError(`--tipo: one of ${INCIDENT_TYPES.join(', ')}.`);
+  if (!INCIDENT_TYPES.includes(tipo)) throw new WassupError(`--tipo: uno de ${INCIDENT_TYPES.join(', ')}.`, `--tipo: one of ${INCIDENT_TYPES.join(', ')}.`);
   const clean = scrub(texto);
-  if (!clean) throw new WassupError('--texto: one sentence describing what happened.');
+  if (!clean) throw new WassupError('--texto: una frase que diga qué ha pasado.', '--texto: one sentence describing what happened.');
   const dir = incidentsDir(root, cfg);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${me}.jsonl`);
@@ -1296,7 +1329,7 @@ async function main(argv) {
   const root = a.root ? path.resolve(String(a.root)) : null;
   if (a.version || cmd === 'version') return console.log(VERSION);
   if (!cmd || cmd === 'help' || a.help) return console.log(HELP);
-  if (!root) throw new WassupError('--root <shared folder> is required.');
+  if (!root) throw new WassupError('Falta --root <carpeta compartida>.', '--root <shared folder> is required.');
   switch (cmd) {
     case 'init': {
       const r = init({ root, name: a.name, lang: a.lang, agent: a.agent, caps: a.caps });
@@ -1459,14 +1492,14 @@ async function main(argv) {
       return;
     }
     default:
-      throw new WassupError(`Unknown command «${cmd}».\n${HELP}`);
+      throw new WassupError(`Orden desconocida «${cmd}».\n${HELP}`, `Unknown command «${cmd}».\n${HELP}`);
   }
 }
 
 const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   main(process.argv.slice(2)).catch((e) => {
-    console.error(e instanceof WassupError ? `wassup: ${e.message}` : e);
+    console.error(e instanceof WassupError ? `wassup: ${e.texto(idiomaDeSalida(process.argv.slice(2)))}` : e);
     process.exit(1);
   });
 }
