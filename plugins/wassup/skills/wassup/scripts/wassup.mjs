@@ -58,7 +58,7 @@ const TEXT = {
 const ALL = new Set(['all', 'todas', 'todos', '*']);
 const NOTHING = /^\s*(?:nada|ninguna?|nothing|none|n\/a|—|-)(?=[\s.,;:]|$)/i;
 const NAME = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-export const VERSION = '0.9.1';
+export const VERSION = '0.9.2';
 
 /**
  * Error para quien usa wassup: en español y en inglés. `message` va en inglés (lo que miran las pruebas);
@@ -1333,11 +1333,15 @@ async function main(argv) {
   switch (cmd) {
     case 'init': {
       const r = init({ root, name: a.name, lang: a.lang, agent: a.agent, caps: a.caps });
-      return console.log(`ok · ${r.name} · coordinator: ${r.coordinator} · sessions: ${r.sessions.join(', ')}`);
+      return console.log(
+        r.lang === 'es'
+          ? `ok · ${r.name} · coordinadora: ${r.coordinator} · sesiones: ${r.sessions.join(', ')}`
+          : `ok · ${r.name} · coordinator: ${r.coordinator} · sessions: ${r.sessions.join(', ')}`,
+      );
     }
     case 'register': {
       const r = register({ root, by: a.by, name: a.name });
-      return console.log(`ok · sessions: ${r.join(', ')}`);
+      return console.log(`ok · ${loadConfig(root).lang === 'es' ? 'sesiones' : 'sessions'}: ${r.join(', ')}`);
     }
     case 'wait': {
       const cfg = loadConfig(root);
@@ -1377,13 +1381,14 @@ async function main(argv) {
       const r = status({ root });
       if (a.json) return console.log(JSON.stringify(r, null, 2));
       const now = Date.now();
+      const es = loadConfig(root).lang === 'es';
       for (const s of r) {
         const h = s.health;
         const hl = h
-          ? ` · ${h.estado === 'saturado' ? 'SATURADO' : h.estado}${h.libreDesde ? ` · libre ${Math.floor((now - new Date(h.libreDesde).getTime()) / 60000)} min` : ''}${h.ramGB != null ? ` · RAM ${h.ramGB} GB` : ''}${h.compartidaGB != null ? ` · shared ${h.compartidaGB} GB` : ''}${h.pesadoEnCurso ? ` · ${h.pesadoEnCurso}` : ''}`
+          ? ` · ${h.estado === 'saturado' ? 'SATURADO' : h.estado}${h.libreDesde ? ` · libre ${Math.floor((now - new Date(h.libreDesde).getTime()) / 60000)} min` : ''}${h.ramGB != null ? ` · RAM ${h.ramGB} GB` : ''}${h.compartidaGB != null ? ` · ${es ? 'compartida' : 'shared'} ${h.compartidaGB} GB` : ''}${h.pesadoEnCurso ? ` · ${h.pesadoEnCurso}` : ''}`
           : '';
         console.log(
-          `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} last #${s.lastMessage} ${s.lastDate ?? ''} · unread ${s.unread}${s.agent ? ` · ${s.agent}` : ''}${hl}${s.caps.length ? ` · [${s.caps.join(', ')}]` : ''}`,
+          `${s.session.padEnd(12)}${s.coordinator ? '*' : ' '} ${es ? 'último' : 'last'} #${s.lastMessage} ${s.lastDate ?? ''} · ${es ? 'sin leer' : 'unread'} ${s.unread}${s.agent ? ` · ${s.agent}` : ''}${hl}${s.caps.length ? ` · [${s.caps.join(', ')}]` : ''}`,
         );
       }
       const cfg = loadConfig(root);

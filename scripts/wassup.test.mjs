@@ -310,3 +310,15 @@ test('errores en el idioma del proyecto (norma: lo que lee el usuario, en su idi
     assert.match(err.texto('es'), /no se escribe a sí misma/);
   }
 });
+
+test('la salida de status, init y register va en el idioma del proyecto', () => {
+  const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'wassup.mjs');
+  const w = (args) => execFileSync(process.execPath, [SCRIPT, ...args], { stdio: 'pipe' }).toString();
+  const es = tmp();
+  assert.match(w(['init', '--root', es, '--name', 'pc', '--lang', 'es']), /coordinadora: pc · sesiones: pc/);
+  assert.match(w(['register', '--root', es, '--by', 'pc', '--name', 'mac']), /^ok · sesiones: pc, mac/);
+  assert.match(w(['status', '--root', es, '--me', 'pc']), /último #\d+ .*· sin leer \d+/);
+  const en = tmp();
+  assert.match(w(['init', '--root', en, '--name', 'pc', '--lang', 'en']), /coordinator: pc · sessions: pc/);
+  assert.match(w(['status', '--root', en, '--me', 'pc']), /last #\d+ .*· unread \d+/);
+});

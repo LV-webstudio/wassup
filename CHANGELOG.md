@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2 · 2026-09-30
+- The rest of what the user reads in the project language: the `status` line (`último` / `sin leer`,
+  `compartida`) and the `init` and `register` confirmations (`coordinadora`, `sesiones`) in Spanish projects.
+
 ## 0.9.1 · 2026-09-29
 - Found by the coordinator on the first real run: the `health` line says when this sample differs from the
   state (hysteresis: it changes after two samples in a row); `config` shows `incidents: on|off` and `status` tells
