@@ -16,6 +16,15 @@ Docs: `README.md`, `README.es.md` (tabla «qué código ejecuta» + sección de 
 
 Resultado de `node --test scripts/*.test.mjs`: 57 pasan, 2 fallan. Los 2 fallos (`T7`, `T10` de `health.test.mjs`) **ya fallaban antes de mis cambios** en este entorno (medición de recursos del sistema); no los he tocado.
 
+## Correcciones tras la revisión
+Revisión en Windows: 57/59 pasaban y `instalar-cuota.ps1` funcionaba. Cambios (en `cuota.mjs` y sus copias en los dos plugins):
+1. **BOM**: se quita al leer la entrada del statusline (y `settings.json`/config); si aun así no es JSON, la barra muestra «⚠ cuota: la entrada del statusline no es JSON válido». Entrada vacía: sin aviso.
+2. **Copia de seguridad**: solo se crea la original; si ya existe `settings.json.wassup-bak-*`, se reutiliza y no se crea otra. `instalar` devuelve la ruta real.
+3. **«*» literal**: el mensaje del instalador ya da la ruta concreta de la copia (README y README.es ajustados).
+4. **`resets_at`**: acepta segundos, milisegundos (≥1e11), cadena ISO 8601 y cadena numérica; si no se entiende, el ritmo queda en `null`.
+5. **T7**: la causa **no era Windows**: el test usaba la fecha fija 29/09/2026 y `remind --mark` borra avisos de más de 7 días respecto a `Date.now()`, así que fallaba en cualquier sistema pasada esa semana (también en Linux aquí). En vez de omitirlo en Windows, el reloj de `health.test.mjs` es ahora relativo a «ahora»; T7 pasa.
+Pruebas nuevas (4): BOM+aviso, copia única, mensaje sin «*», `resets_at`. `node --test scripts/*.test.mjs`: 62 pasan, 1 falla (**T10**, ya fallaba antes: depende del entorno —su comprobación de «no debe aparecer: vm» salta por el nombre/virtualización de esta máquina—; no tocado).
+
 ## Queda / límites
 - `instalar-cuota.ps1` **no se ha podido ejecutar** (no hay PowerShell en la nube); comparte toda la lógica con el `.sh` vía `cuota.mjs install`, que sí está probado. Conviene una prueba real en Windows.
 - Los nombres de campo de `SendMessage` (`message`/`content`/`body`/`text`) y el formato exacto de `rate_limits` se han asumido de la documentación; falta verificarlos con una sesión real.
@@ -24,4 +33,4 @@ Resultado de `node --test scripts/*.test.mjs`: 57 pasan, 2 fallan. Los 2 fallos 
 - `hooks/hooks.json` de plugin no se ha creado a propósito, para no activar nada por defecto.
 
 ## Revisión de privacidad
-Revisé el diff completo contra `main` buscando nombres, correos, IPs, rutas privadas, dominios y claves: no hay ninguno. Los únicos tokens son falsos y genéricos en las pruebas (`ghp_abcdefghijklmnop1234`, etc.) y las rutas de las pruebas son temporales.
+Revisé el diff completo contra `main` (y de nuevo el de estas correcciones) buscando nombres, correos, IPs, rutas privadas, dominios y claves: no hay ninguno. Los únicos tokens son falsos y genéricos en las pruebas (`ghp_abcdefghijklmnop1234`, etc.) y las rutas de las pruebas son temporales.

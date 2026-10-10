@@ -2,6 +2,7 @@
 
 ## Sin publicar
 - **Barra de cuota** (`scripts/cuota.mjs`, instaladores `hooks/instalar-cuota.sh` y `.ps1`): lee `rate_limits` del statusline y escribe `cuota.json` (VERDE/ÁMBAR/ROJO/NEGRO por % semanal y ritmo); copia de `settings.json` y no machaca un statusline existente.
+- **Cuota, correcciones**: la entrada con BOM se lee y, si no es JSON, avisa; una única copia de seguridad; `resets_at` acepta segundos, milisegundos e ISO 8601.
 - **Hooks opcionales** (`scripts/wassup-hooks.mjs`): `acuse` (RECIBIDO en `ACUSES/` y `sin-acuse`), `ordenes` (copia firmada a `ORDENES/`), `secretos` (bloquea claves y contraseñas en `SendMessage`, reutilizando los patrones de `scrub`) y `hora` (hora del sistema en cada mensaje).
 - `wassup.mjs` exporta `TOKEN_PATTERNS`, `PASSWORD_PATTERNS` y `findSecrets`.
 

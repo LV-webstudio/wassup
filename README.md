@@ -79,7 +79,7 @@ None turns on by itself; you add them in your own `settings.json` (`<path>` = wh
 | `… hora --root <shared>` | `PreToolUse`, matcher `SendMessage` | Appends `[hora: YYYY-MM-DD HH:MM ±HH:MM]` (system clock) to the end of the message, only once. |
 
 ### Quota bar
-`sh hooks/instalar-cuota.sh <shared>` (Mac/Linux) or `powershell -File hooks\instalar-cuota.ps1 -Root <shared>` (Windows). Copies `cuota.mjs` to `~/.claude/wassup/`, saves a `settings.json.wassup-bak-*` copy and sets the statusline; if you already had one it is kept and still shown. Writes `cuota.json` with a `nivel`: **VERDE** (<70 % weekly, normal pace), **ÁMBAR** (≥70 % or pace ≥1.15), **ROJO** (≥85 % or pace ≥1.5), **NEGRO** (≥97 % weekly or the 5 h window nearly full). Pace = % used / % of the week elapsed. `rate_limits` exists only with a Claude.ai subscription.
+`sh hooks/instalar-cuota.sh <shared>` (Mac/Linux) or `powershell -File hooks\instalar-cuota.ps1 -Root <shared>` (Windows). Copies `cuota.mjs` to `~/.claude/wassup/`, saves a single original `settings.json.wassup-bak-<date>` copy (no new one on reinstall) and sets the statusline; if you already had one it is kept and still shown. Writes `cuota.json` with a `nivel`: **VERDE** (<70 % weekly, normal pace), **ÁMBAR** (≥70 % or pace ≥1.15), **ROJO** (≥85 % or pace ≥1.5), **NEGRO** (≥97 % weekly or the 5 h window nearly full). Pace = % used / % of the week elapsed. `rate_limits` exists only with a Claude.ai subscription.
 
 ## What it is not
 It is a working convention, not new technology. If you need file locks, a searchable message server or

@@ -23,6 +23,16 @@ export function nivel({ semanal, cincoH, ritmo }) {
   return 'VERDE';
 }
 
+/** resets_at → segundos epoch: acepta segundos, milisegundos (≥ 1e11) o cadena ISO 8601; null si no se entiende. */
+export function aSegundos(v) {
+  if (typeof v === 'string' && v.trim() !== '') {
+    if (/^\d+(\.\d+)?$/.test(v.trim())) v = Number(v);
+    else { const t = Date.parse(v); return Number.isNaN(t) ? null : t / 1000; }
+  }
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  return v >= 1e11 ? v / 1000 : v;
+}
+
 /** Datos del statusline → registro de cuota (o null si no trae rate_limits, p. ej. con API key). */
 export function calcular(ev, nowMs = Date.now()) {
   const rl = ev?.rate_limits;
@@ -31,8 +41,9 @@ export function calcular(ev, nowMs = Date.now()) {
   const semanal = sem.used_percentage;
   const cincoH = typeof rl.five_hour?.used_percentage === 'number' ? rl.five_hour.used_percentage : 0;
   let ritmo = null;
-  if (typeof sem.resets_at === 'number') {
-    const restante = Math.min(SEMANA_S, Math.max(0, sem.resets_at - nowMs / 1000));
+  const reinicio = aSegundos(sem.resets_at);
+  if (reinicio != null) {
+    const restante = Math.min(SEMANA_S, Math.max(0, reinicio - nowMs / 1000));
     const transcurrido = SEMANA_S - restante;
     if (transcurrido > 3600) ritmo = Math.round((semanal / ((transcurrido / SEMANA_S) * 100)) * 100) / 100;
   }
@@ -60,26 +71,37 @@ const CFG = path.join(os.homedir(), '.claude', 'wassup-cuota.json');
 /** Statusline: guarda cuota.json y devuelve el texto de la barra (+ la del statusline anterior, si había). */
 export function linea(stdinText, cfg, nowMs = Date.now(), run = (cmd, input) => execSync(cmd, { input, encoding: 'utf8', timeout: 5000 })) {
   let ev = {};
-  try { ev = JSON.parse(stdinText || '{}'); } catch { /* vacío */ }
+  let aviso = '';
+  const limpio = String(stdinText ?? '').replace(/^\uFEFF/, '');
+  if (limpio.trim()) {
+    try { ev = JSON.parse(limpio); } catch { aviso = '⚠ cuota: la entrada del statusline no es JSON válido'; }
+  }
   const rec = calcular(ev, nowMs);
   if (rec && cfg?.root) { try { escribir(cfg.root, rec); } catch { /* carpeta no disponible: la barra sigue */ } }
   let previa = '';
   if (cfg?.prev) { try { previa = String(run(cfg.prev, stdinText)).trim(); } catch { /* el anterior falló */ } }
   const mia = rec ? `${ICONO[rec.nivel]} ${rec.nivel} ${Math.round(rec.semanal_pct)}%${rec.ritmo != null ? ` ×${rec.ritmo}` : ''}` : '';
-  return [previa, mia].filter(Boolean).join(' · ');
+  return [previa, mia || aviso].filter(Boolean).join(' · ');
 }
 
 /**
- * Instalación: copia de seguridad de settings.json (siempre, si existe) y statusLine → este script.
+ * Instalación: copia de seguridad de settings.json (solo la original: si ya hay una, no se crea otra) y statusLine → este script.
  * Si había un statusline ajeno, su comando pasa a `wassup-cuota.json` (prev) y se sigue mostrando.
  * Idempotente: si ya está instalada, no vuelve a capturar «prev» (no se pierde el original).
  */
 export function instalar({ settings, root, script, cfgFile = CFG, now = new Date() }) {
   let cur = {};
+  let backup = null;
   if (fs.existsSync(settings)) {
-    cur = JSON.parse(fs.readFileSync(settings, 'utf8') || '{}');
-    const bak = `${settings}.wassup-bak-${now.toISOString().replace(/[:.]/g, '-')}`;
-    fs.copyFileSync(settings, bak);
+    cur = JSON.parse(fs.readFileSync(settings, 'utf8').replace(/^\uFEFF/, '') || '{}');
+    const dir = path.dirname(settings);
+    const base = `${path.basename(settings)}.wassup-bak-`;
+    const hay = fs.readdirSync(dir).filter((f) => f.startsWith(base)).sort();
+    if (hay.length) backup = path.join(dir, hay[0]); // solo la copia original: no se crea otra
+    else {
+      backup = `${settings}.wassup-bak-${now.toISOString().replace(/[:.]/g, '-')}`;
+      fs.copyFileSync(settings, backup);
+    }
   }
   const mio = `node "${script}"`;
   const previo = cur.statusLine?.command;
@@ -91,7 +113,7 @@ export function instalar({ settings, root, script, cfgFile = CFG, now = new Date
   fs.writeFileSync(cfgFile, JSON.stringify({ root, prev }, null, 2) + '\n');
   fs.mkdirSync(path.dirname(settings), { recursive: true });
   fs.writeFileSync(settings, JSON.stringify({ ...cur, statusLine: { type: 'command', command: mio } }, null, 2) + '\n');
-  return { prev, backup: fs.existsSync(settings) };
+  return { prev, backup };
 }
 
 function arg(argv, name) {
@@ -106,12 +128,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     if (!root) { console.error('Falta --root <carpeta común> / --root is required.'); process.exit(1); }
     const settings = arg(argv, 'settings') ?? path.join(os.homedir(), '.claude', 'settings.json');
     const r = instalar({ settings, root: path.resolve(root), script: fileURLToPath(import.meta.url) });
-    console.log(`Barra de cuota instalada · ${r.prev ? 'statusline anterior conservado' : 'sin statusline anterior'} · copia: ${settings}.wassup-bak-*`);
+    console.log(`Barra de cuota instalada · ${r.prev ? 'statusline anterior conservado' : 'sin statusline anterior'} · ${r.backup ? `copia: ${r.backup}` : 'sin settings previo, sin copia'}`);
   } else {
     let data = '';
     if (!process.stdin.isTTY) for await (const c of process.stdin) data += c;
     let cfg = {};
-    try { cfg = JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch { /* sin config */ }
+    try { cfg = JSON.parse(fs.readFileSync(CFG, 'utf8').replace(/^\uFEFF/, '')); } catch { /* sin config */ }
     process.stdout.write(linea(data, cfg) + '\n');
   }
 }

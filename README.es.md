@@ -78,7 +78,7 @@ Ninguno se activa solo; los añades tú en tu `settings.json` (`<ruta>` = donde 
 | `… hora --root <común>` | `PreToolUse`, matcher `SendMessage` | Añade `[hora: AAAA-MM-DD HH:MM ±HH:MM]` (reloj del sistema) al final del mensaje, una sola vez. |
 
 ### Barra de cuota
-`sh hooks/instalar-cuota.sh <común>` (Mac/Linux) o `powershell -File hooks\instalar-cuota.ps1 -Root <común>` (Windows). Copia `cuota.mjs` a `~/.claude/wassup/`, guarda copia `settings.json.wassup-bak-*` y pone el statusline; si ya tenías uno, lo conserva y lo sigue mostrando. Escribe `cuota.json` con `nivel`: **VERDE** (<70 % semanal y ritmo normal), **ÁMBAR** (≥70 % o ritmo ≥1,15), **ROJO** (≥85 % o ritmo ≥1,5), **NEGRO** (≥97 % semanal o ventana de 5 h casi llena). Ritmo = % gastado / % de semana transcurrida. Solo hay `rate_limits` con suscripción Claude.ai.
+`sh hooks/instalar-cuota.sh <común>` (Mac/Linux) o `powershell -File hooks\instalar-cuota.ps1 -Root <común>` (Windows). Copia `cuota.mjs` a `~/.claude/wassup/`, guarda una única copia original `settings.json.wassup-bak-<fecha>` (no crea otra al reinstalar) y pone el statusline; si ya tenías uno, lo conserva y lo sigue mostrando. Escribe `cuota.json` con `nivel`: **VERDE** (<70 % semanal y ritmo normal), **ÁMBAR** (≥70 % o ritmo ≥1,15), **ROJO** (≥85 % o ritmo ≥1,5), **NEGRO** (≥97 % semanal o ventana de 5 h casi llena). Ritmo = % gastado / % de semana transcurrida. Solo hay `rate_limits` con suscripción Claude.ai.
 
 ## Qué no es
 Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos de ficheros, un servidor de

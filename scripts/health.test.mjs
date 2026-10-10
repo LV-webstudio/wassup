@@ -26,7 +26,9 @@ import {
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-health-'));
-const NOW = new Date(2026, 8, 29, 20, 0);
+// Reloj relativo a «ahora»: el borrado de avisos viejos de `remind --mark` usa Date.now(), y una fecha fija
+// (29/09/2026) dejaba T7 en rojo pasados 7 días, en cualquier sistema.
+const NOW = new Date(Math.floor(Date.now() / 60000) * 60000);
 const later = (min) => new Date(NOW.getTime() + min * 60000);
 
 function three() {

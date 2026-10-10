@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { calcular, instalar, linea, nivel } from './cuota.mjs';
+import { aSegundos, calcular, instalar, linea, nivel } from './cuota.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./cuota.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-q-'));
@@ -75,4 +75,47 @@ test('instalador .sh: un paso, con copia y sin machacar el statusline', { skip: 
   assert.equal(JSON.parse(fs.readFileSync(path.join(h, '.claude', 'wassup-cuota.json'), 'utf8')).prev, 'viejo');
   assert.ok(fs.readdirSync(path.join(h, '.claude')).some((f) => f.includes('wassup-bak')));
   assert.equal(spawnSync('sh', [sh], { encoding: 'utf8' }).status, 1);
+});
+
+test('BOM: la entrada con BOM se lee; si no es JSON, avisa en vez de callar', () => {
+  const root = tmp();
+  const out = linea('\uFEFF' + JSON.stringify(ev(60)), { root }, NOW);
+  assert.match(out, /ÁMBAR 60%/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cuota.json'), 'utf8')).nivel, 'ÁMBAR');
+  assert.match(linea('\uFEFF{roto', { root }, NOW), /^⚠ cuota: .*JSON/);
+  assert.equal(linea('', { root }, NOW), ''); // vacío: sin aviso
+});
+
+test('instalar: una sola copia de seguridad aunque se instale varias veces', () => {
+  const d = tmp();
+  const settings = path.join(d, 'settings.json');
+  const cfgFile = path.join(d, 'wassup-cuota.json');
+  fs.writeFileSync(settings, JSON.stringify({ model: 'x' }));
+  const a = instalar({ settings, root: '/c', script: '/p/cuota.mjs', cfgFile });
+  const b = instalar({ settings, root: '/c', script: '/p/cuota.mjs', cfgFile, now: new Date(Date.now() + 5000) });
+  const baks = fs.readdirSync(d).filter((f) => f.includes('wassup-bak'));
+  assert.equal(baks.length, 1);
+  assert.equal(a.backup, b.backup);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(d, baks[0]), 'utf8')).statusLine, undefined); // es la original
+});
+
+test('mensaje de instalación: sin «*» literal; da la ruta real de la copia', () => {
+  const d = tmp();
+  const settings = path.join(d, 'settings.json');
+  fs.writeFileSync(settings, '{}');
+  const r = spawnSync(process.execPath, [SCRIPT, 'install', '--root', path.join(d, 'c'), '--settings', settings], { encoding: 'utf8', env: { ...process.env, HOME: d, USERPROFILE: d } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!r.stdout.includes('*'), r.stdout);
+  assert.match(r.stdout, /wassup-bak-\d{4}-/);
+});
+
+test('resets_at: número en segundos o milisegundos, y cadena ISO 8601', () => {
+  const reset = NOW / 1000 + 3.5 * 86400;
+  const con = (v) => calcular({ rate_limits: { seven_day: { used_percentage: 60, resets_at: v } } }, NOW).ritmo;
+  assert.equal(con(reset), 1.2);
+  assert.equal(con(reset * 1000), 1.2);
+  assert.equal(con(new Date(reset * 1000).toISOString()), 1.2);
+  assert.equal(con(String(reset)), 1.2);
+  assert.equal(con('no es fecha'), null);
+  assert.equal(aSegundos(null), null);
 });
