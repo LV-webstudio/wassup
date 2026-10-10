@@ -173,7 +173,10 @@ test('los plugins llevan copias idénticas del script y del hook, y la misma ver
     const dir = entry.source.replace(/^\.\//, '');
     const skill = [dir, 'skills', 'wassup'];
     assert.ok(read(...skill, 'scripts', 'wassup.mjs').equals(read('scripts', 'wassup.mjs')), `${dir}: wassup.mjs`);
-    assert.ok(read(...skill, 'hooks', 'notify-windows.ps1').equals(read('hooks', 'notify-windows.ps1')), `${dir}: hook`);
+    for (const f of ['wassup-hooks.mjs', 'cuota.mjs'])
+      assert.ok(read(...skill, 'scripts', f).equals(read('scripts', f)), `${dir}: ${f}`);
+    for (const f of ['notify-windows.ps1', 'instalar-cuota.sh', 'instalar-cuota.ps1'])
+      assert.ok(read(...skill, 'hooks', f).equals(read('hooks', f)), `${dir}: hook ${f}`);
     const manifest = JSON.parse(read(dir, '.claude-plugin', 'plugin.json'));
     assert.equal(manifest.name, entry.name);
     assert.equal(manifest.version, entry.version);

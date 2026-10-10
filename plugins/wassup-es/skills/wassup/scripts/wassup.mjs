@@ -1085,6 +1085,27 @@ export const PRODUCT_TYPES = new Set(['bloqueo-permiso', 'mensaje-perdido']);
 const INCIDENT_DAYS = 90;
 const incidentsDir = (root, cfg) => path.join(root, cfg.t.incidents);
 
+/** Token and key shapes (shared by `scrub` and the secrets hook). */
+export const TOKEN_PATTERNS = [
+  /\b(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AIza|ya29|AKIA)[-_A-Za-z0-9.]{8,}/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g,
+  /\b(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{32,}={0,2}/g,
+];
+/** Passwords and private keys: «password: x», «clave=x», PEM blocks. */
+export const PASSWORD_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /\b(?:pass(?:word|wd)?|contrase(?:ñ|n)a|clave|secret|api[_-]?key|token)\s*[:=]\s*["']?[^\s"']{6,}/i,
+];
+
+/** Kinds of secret found in a text (empty list = clean). Never returns the secret itself. */
+export function findSecrets(text) {
+  const t = String(text ?? '');
+  const out = [];
+  if (TOKEN_PATTERNS.some((re) => new RegExp(re.source, re.flags).test(t))) out.push('token');
+  if (PASSWORD_PATTERNS.some((re) => re.test(t))) out.push('password');
+  return out;
+}
+
 /**
  * Removes what must never travel: e-mails, phone numbers, tokens and keys, absolute paths and URL
  * paths/queries (the host stays). One line, 300 characters at most.
@@ -1093,9 +1114,9 @@ export function scrub(text) {
   return String(text ?? '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[correo]')
-    .replace(/\b(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AIza|ya29|AKIA)[-_A-Za-z0-9.]{8,}/g, '[token]')
-    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g, '[token]')
-    .replace(/\b(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{32,}={0,2}/g, '[token]')
+    .replace(TOKEN_PATTERNS[0], '[token]')
+    .replace(TOKEN_PATTERNS[1], '[token]')
+    .replace(TOKEN_PATTERNS[2], '[token]')
     .replace(/\bhttps?:\/\/([^/\s?#]+)[^\s]*/gi, 'https://$1')
     .replace(/\b[A-Za-z]:[\\/][^\s"'`«»]*/g, '[ruta]')
     .replace(/(^|[\s"'`(«])(?:~|\/(?:Users|home|root|var|tmp|private|Volumes|mnt|opt|etc|srv))\/[^\s"'`»)]*/g, '$1[ruta]')
