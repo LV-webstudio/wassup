@@ -62,8 +62,24 @@ small, readable scripts; nothing is minified or downloaded:
 | `scripts/wassup.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash, under your normal permission prompts | Reads and writes the mailbox, status files and `wassup.json` **inside the folder you pass with `--root`**; with `--commit auto` it reads the current commit with `git rev-parse`; `health` runs read-only system commands (`vm_stat`, `sysctl`, `pmset` on macOS · one PowerShell CIM query on Windows · `/proc` on Linux · `docker info` if Docker is there), never elevated, and writes `health-<me>.json` with figures only (no processes, paths or users; the machine is a short hash of its name); `log` and `report` (only if the project turns incidents on) write `incidents/<me>.jsonl` and an anonymised `report-<date>.md` in that folder and send nothing | None |
 | `scripts/despertar.mjs` (Node 18+, no dependencies) | Only when Claude runs it through Bash (wake mode, §7 bis) | Reads your local conversation files in `~/.claude/projects/` **only to find** the session with that name and its folder (nothing is copied or sent), then opens a new console running `claude --resume <id>` with the `CLAUDE_*` variables removed | None |
 | `hooks/notify-windows.ps1` (PowerShell) | Only if **you** add it as a `Notification` hook in your own settings | Shows a local Windows desktop notification | None |
+| `scripts/wassup-hooks.mjs` (Node 18+, no dependencies) | Only if **you** add it as a hook (see "Optional hooks") | `acuse`, `ordenes`, `secretos`, `hora`: write only to `ACUSES/` and `ORDENES/` in the shared folder, or block/extend a message; without `--root` they do nothing | None |
+| `scripts/cuota.mjs` + `hooks/instalar-cuota.sh` / `.ps1` | Only if **you** run the installer | Status bar: reads `rate_limits` from the statusline and writes `cuota.json` in the shared folder; the installer backs up `settings.json` and keeps an existing statusline | None |
 
 None reads credentials or environment secrets; apart from `despertar.mjs` finding a session in your own conversation files, none reads files outside the chosen folder. See also [PRIVACY.md](PRIVACY.md).
+
+## Optional hooks
+
+None turns on by itself; you add them in your own `settings.json` (`<path>` = where you copied `scripts/`, `<shared>` = the shared folder).
+
+| Hook | Event | What it does |
+|---|---|---|
+| `node <path>/wassup-hooks.mjs acuse --root <shared> --me <session>` | `UserPromptSubmit` or `SessionStart` | For each message addressed to you, leaves `ACUSES/RECIBIDO-<sender>-<n>-<me>.txt` ("RECIBIDO sender#n"). The sender lists what is still pending with `sin-acuse --me <sender>`. |
+| `… ordenes --root <shared> --me <session>` | `UserPromptSubmit` | Copies every order the user types to `ORDENES/`: date, session, text and a signature (an integrity hash that detects edits; it does not authenticate). A pasted secret is masked. |
+| `… secretos --root <shared>` | `PreToolUse`, matcher `SendMessage` | Blocks (exit 2 with a reason) messages containing tokens, private keys or `password:`/`clave=`; reuses the `scrub` patterns. |
+| `… hora --root <shared>` | `PreToolUse`, matcher `SendMessage` | Appends `[hora: YYYY-MM-DD HH:MM ±HH:MM]` (system clock) to the end of the message, only once. |
+
+### Quota bar
+`sh hooks/instalar-cuota.sh <shared>` (Mac/Linux) or `powershell -File hooks\instalar-cuota.ps1 -Root <shared>` (Windows). Copies `cuota.mjs` to `~/.claude/wassup/`, saves a `settings.json.wassup-bak-*` copy and sets the statusline; if you already had one it is kept and still shown. Writes `cuota.json` with a `nivel`: **VERDE** (<70 % weekly, normal pace), **ÁMBAR** (≥70 % or pace ≥1.15), **ROJO** (≥85 % or pace ≥1.5), **NEGRO** (≥97 % weekly or the 5 h window nearly full). Pace = % used / % of the week elapsed. `rate_limits` exists only with a Claude.ai subscription.
 
 ## What it is not
 It is a working convention, not new technology. If you need file locks, a searchable message server or

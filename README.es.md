@@ -61,8 +61,24 @@ pequeños y legibles; nada está minificado ni se descarga:
 | `scripts/wassup.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo lanza por Bash, con tus avisos de permiso habituales | Lee y escribe el buzón, los estados y `wassup.json` **dentro de la carpeta que indicas con `--root`**; con `--commit auto` lee el commit actual con `git rev-parse`; `health` lanza órdenes del sistema de solo lectura (`vm_stat`, `sysctl`, `pmset` en macOS · una consulta CIM de PowerShell en Windows · `/proc` en Linux · `docker info` si hay Docker), nunca con permisos elevados, y escribe `salud-<yo>.json` solo con cifras (sin procesos, rutas ni usuarios; el equipo es un resumen corto de su nombre); `log` y `report` (solo si el proyecto enciende las incidencias) escriben `incidencias/<yo>.jsonl` y un `reporte-<fecha>.md` anónimo en esa carpeta y no envían nada | Ninguna |
 | `scripts/despertar.mjs` (Node 18+, sin dependencias) | Solo cuando Claude lo ejecuta por Bash (modo despertar, §7 bis) | Lee tus conversaciones locales en `~/.claude/projects/` **solo para encontrar** la sesión con ese nombre y su carpeta (no copia ni envía nada) y abre una consola nueva con `claude --resume <id>`, sin las variables `CLAUDE_*` | Ninguna |
 | `hooks/notify-windows.ps1` (PowerShell) | Solo si **tú** lo añades como hook `Notification` en tu configuración | Muestra un aviso local de Windows | Ninguna |
+| `scripts/wassup-hooks.mjs` (Node 18+, sin dependencias) | Solo si **tú** lo añades como hook (ver «Hooks opcionales») | `acuse`, `ordenes`, `secretos`, `hora`: escriben solo en `ACUSES/` y `ORDENES/` de la carpeta común, o bloquean/amplían un mensaje; sin `--root` no hacen nada | Ninguna |
+| `scripts/cuota.mjs` + `hooks/instalar-cuota.sh` / `.ps1` | Solo si **tú** ejecutas el instalador | Barra de estado: lee `rate_limits` del statusline y escribe `cuota.json` en la carpeta común; el instalador hace copia de `settings.json` y conserva un statusline existente | Ninguna |
 
 Ninguno lee credenciales ni secretos del entorno; salvo `despertar.mjs`, que busca una sesión en tus propias conversaciones, ninguno lee ficheros fuera de la carpeta elegida. Ver también [PRIVACY.md](PRIVACY.md).
+
+## Hooks opcionales
+
+Ninguno se activa solo; los añades tú en tu `settings.json` (`<ruta>` = donde copiaste `scripts/`, `<común>` = la carpeta común).
+
+| Hook | Evento | Qué hace |
+|---|---|---|
+| `node <ruta>/wassup-hooks.mjs acuse --root <común> --me <sesión>` | `UserPromptSubmit` o `SessionStart` | Por cada mensaje que te toca, deja `ACUSES/RECIBIDO-<emisor>-<n>-<yo>.txt` («RECIBIDO emisor#n»). El emisor ve lo pendiente con `sin-acuse --me <emisor>`. |
+| `… ordenes --root <común> --me <sesión>` | `UserPromptSubmit` | Copia a `ORDENES/` cada orden que escribe el usuario: fecha, sesión, texto y una firma (hash de integridad, detecta ediciones; no autentica). Un secreto pegado se tapa. |
+| `… secretos --root <común>` | `PreToolUse`, matcher `SendMessage` | Bloquea (sale 2 con motivo) mensajes con tokens, claves privadas o `password:`/`clave=`; reutiliza los patrones de `scrub`. |
+| `… hora --root <común>` | `PreToolUse`, matcher `SendMessage` | Añade `[hora: AAAA-MM-DD HH:MM ±HH:MM]` (reloj del sistema) al final del mensaje, una sola vez. |
+
+### Barra de cuota
+`sh hooks/instalar-cuota.sh <común>` (Mac/Linux) o `powershell -File hooks\instalar-cuota.ps1 -Root <común>` (Windows). Copia `cuota.mjs` a `~/.claude/wassup/`, guarda copia `settings.json.wassup-bak-*` y pone el statusline; si ya tenías uno, lo conserva y lo sigue mostrando. Escribe `cuota.json` con `nivel`: **VERDE** (<70 % semanal y ritmo normal), **ÁMBAR** (≥70 % o ritmo ≥1,15), **ROJO** (≥85 % o ritmo ≥1,5), **NEGRO** (≥97 % semanal o ventana de 5 h casi llena). Ritmo = % gastado / % de semana transcurrida. Solo hay `rate_limits` con suscripción Claude.ai.
 
 ## Qué no es
 Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos de ficheros, un servidor de
