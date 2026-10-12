@@ -1,11 +1,11 @@
 {
   "name": "wassup",
   "displayName": "Wassup",
-  "version": "0.9.2",
+  "version": "0.13.0",
   "description": "Lets several Claude Code sessions on different machines (Windows, macOS, Linux) work on one project without stepping on each other and talk to each other, with no server: one writer per file, a direct channel over Remote Control and a numbered mailbox in a shared folder.",
   "icon": "./.claude-plugin/icon.png",
   "author": {
-    "name": "LV-Webstudio (Speccy81)"
+    "name": "Shania Webstudio (Speccy81)"
   },
   "homepage": "https://github.com/LV-webstudio/wassup",
   "repository": "https://github.com/LV-webstudio/wassup",

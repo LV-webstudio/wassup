@@ -1,4 +1,4 @@
-# Wassup
+# Wassup™
 
 ![Wassup: sesiones de Claude Code que se hablan entre ellas](https://raw.githubusercontent.com/LV-webstudio/wassup/main/assets/banner.jpg)
 
@@ -69,5 +69,16 @@ Es una convención de trabajo, no una tecnología nueva. Si necesitas bloqueos d
 mensajes con búsqueda u orquestación automática, mira los servidores de correo entre agentes basados en MCP
 o las herramientas de orquestación; Wassup es la opción ligera para pocos equipos y con una persona al mando.
 
+## Ediciones
+Wassup tiene dos ediciones. La **Básica** (MIT, este repositorio público) es el núcleo, `scripts/wassup.mjs`:
+todo lo que se explica aquí funciona solo con él. La **Completa** la mantiene Shania Webstudio™ para sus propios
+equipos y no es de código abierto: añade `scripts/wassup-completa.mjs` junto al núcleo (cerrojo por equipo y
+lotes asumibles, el equipo despierto mientras se usa Wassup, avisos de errores a quien lo mantiene y el modo
+despertar). El núcleo la carga solo si está instalada; sin ella, esas órdenes lo dicen y no escriben nada.
+
+## Quién lo hace
+Wassup lo hace **[Shania Webstudio](https://shaniawebstudio.com)** (Speccy81™), estudio de web e inteligencia
+artificial. Las incidencias y las ideas son bienvenidas en GitHub.
+
 ## Licencia
-MIT — ver [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 LV-Webstudio (Speccy81).
+MIT — ver [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 Shania Webstudio (Speccy81).

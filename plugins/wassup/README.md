@@ -1,4 +1,4 @@
-# Wassup
+# Wassup™
 
 ![Wassup: Claude Code sessions that talk to each other](https://raw.githubusercontent.com/LV-webstudio/wassup/main/assets/banner.jpg)
 
@@ -70,5 +70,17 @@ It is a working convention, not new technology. If you need file locks, a search
 automatic orchestration, look at MCP-based agent mail servers or orchestration tools; Wassup is the
 lightweight option for a few machines and a human in the loop.
 
+## Editions
+Wassup comes in two editions. The **Basic edition** (MIT, this public repository) is the core,
+`scripts/wassup.mjs`: everything described here works with it alone. The **Full edition** is maintained by
+Shania Webstudio™ for its own teams and is not open source: it adds `scripts/wassup-completa.mjs` next to the core
+(per-machine locks and manageable batches, keeping machines awake while Wassup is in use, error notices to the
+maintainer and wake mode). The core loads it only when it is installed; without it, those commands say so and
+write nothing.
+
+## Who makes it
+Wassup is made by **[Shania Webstudio](https://shaniawebstudio.com)** (Speccy81™), a web and AI studio. Issues and
+ideas are welcome on GitHub.
+
 ## Licence
-MIT — see [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 LV-Webstudio (Speccy81).
+MIT — see [LICENSE](https://github.com/LV-webstudio/wassup/blob/main/LICENSE). © 2026 Shania Webstudio (Speccy81).

@@ -6,27 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import {
-  capsOf,
-  classify,
-  configure,
-  health,
-  init,
-  measure,
-  parsePmsetTherm,
-  parseSwapUsage,
-  parseVmStat,
-  register,
-  remind,
-  RESOURCES_DEFAULTS,
-  send,
-  status,
-  VERSION,
-} from './wassup.mjs';
+import { capsOf, classify, configure, health, init, measure, parsePmsetTherm, parseSwapUsage, parseVmStat, register, remind, RESOURCES_DEFAULTS, send, status, VERSION, origenDeCarga, parsePs, textoOrigen } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-health-'));
-const NOW = new Date(2026, 8, 29, 20, 0);
+// Reloj relativo a «ahora»: el borrado de avisos viejos de `remind --mark` usa Date.now(), y una fecha fija
+// (29/09/2026) dejaba T7 en rojo pasados 7 días, en cualquier sistema.
+const NOW = new Date(Math.floor(Date.now() / 60000) * 60000);
 const later = (min) => new Date(NOW.getTime() + min * 60000);
 
 function three() {
@@ -219,7 +205,9 @@ test('T10 · salud-<yo>.json: versión y solo cifras (sin procesos, rutas ni usu
   const text = fs.readFileSync(path.join(root, 'salud-mac.json'), 'utf8');
   const j = JSON.parse(text);
   assert.equal(j.v, 1);
-  assert.deepEqual(Object.keys(j), ['v', 'sesion', 'ts', 'equipo', 'ram', 'cpu', 'disco', 'termica', 'contenedores', 'estado', 'muestra', 'motivos', 'trabajo', 'historial', 'aviso']);
+  assert.deepEqual(Object.keys(j), ['v', 'sesion', 'ts', 'equipo', 'ram', 'cpu', 'disco', 'origenCarga', 'termica', 'contenedores', 'estado', 'muestra', 'motivos', 'trabajo', 'historial', 'aviso', 'avisosVistos']);
+  // 0.12 (A18): avisosVistos es solo un recuento (cuántas líneas de AVISOS.md ha visto), nunca su texto.
+  assert.equal(typeof j.avisosVistos, 'number');
   for (const secret of [os.hostname(), os.userInfo().username, os.homedir(), root, process.cwd()])
     assert.ok(!text.includes(secret), `no debe aparecer: ${secret}`);
   assert.match(j.equipo.id, /^[0-9a-f]{8}$/);
@@ -227,7 +215,7 @@ test('T10 · salud-<yo>.json: versión y solo cifras (sin procesos, rutas ni usu
 
 test('M21 · capacidades en el buzón propio (una línea) y en status; saturada = doble de paciencia', async () => {
   const root = three();
-  init({ root, name: 'mac', agent: 'mac-tests', caps: 'Playwright, cred:ferro-deploy' });
+  init({ root, name: 'mac', agent: 'mac-tests', caps: 'Playwright, cred:demo-deploy' });
   init({ root, name: 'mac', caps: 'playwright, safari' });
   const box = mailbox(root, 'mac');
   assert.equal(box.match(/^Capacidades: .*$/gm).length, 1);
@@ -294,8 +282,16 @@ test('línea de health: si la muestra difiere del estado (histéresis), lo dice;
   };
   assert.match(w(['health', '--root', root, '--me', 'mac'], env), /^ok \(esta muestra: saturado; el estado cambia con 2 muestras seguidas\) · RAM disponible 0,2 GB/);
   assert.match(w(['health', '--root', root, '--me', 'mac'], env), /^saturado · RAM disponible 0,2 GB/);
-  assert.match(w(['config', '--root', root, '--by', 'pc', '--incidents', 'on']), /incidents: on/);
+  assert.match(w(['config', '--root', root, '--by', 'pc', '--incidents', 'on']), /incidencias: encendidas/);
   assert.match(w(['status', '--root', root]), /incidencias: encendidas\s*$/);
   assert.match(w(['config', '--root', root, '--incidents', 'off']), /Falta --by <coordinadora> \(la coordinadora es «pc»\)/);
   assert.match(w(['register', '--root', root, '--name', 'otra']), /Falta --by <coordinadora>/);
+});
+
+// ---------- 0.10, lote B: M24 (cerrojo e historial), M31, M32, M33 ----------
+test('M32: origen de la carga por categorías, sin nombres de procesos', () => {
+  const o = origenDeCarga(parsePs(' 60.0 /Applications/Google Drive.app/Contents/MacOS/Google Drive\n 30.0 node\n 5,0 kernel_task\n 0.0 x'));
+  assert.deepEqual(o, [{ origen: 'sincronizacion', pct: 63 }, { origen: 'desarrollo', pct: 32 }, { origen: 'sistema', pct: 5 }]);
+  assert.equal(textoOrigen(o), 'sincronización 63 %, tareas de desarrollo 32 %, sistema 5 %');
+  assert.ok(!textoOrigen(o).includes('Drive'));
 });

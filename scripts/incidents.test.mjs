@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { configure, INCIDENT_SCHEMA, init, logIncident, readIncidents, register, report, scrub, VERSION } from './wassup.mjs';
+import { configure, INCIDENT_SCHEMA, init, logIncident, readIncidents, register, report, scrub, VERSION, WassupError } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-inc-'));
@@ -30,11 +30,11 @@ test('filtro de privacidad: correos, teléfonos, tokens, rutas absolutas y rutas
       'correo persona@ejemplo.com, tel +34 612 345 678 y 612345678; token ghp_abcdefghijklmnopqrstu1234567890, ' +
       'AIzaSyD-abcdefghijklmnop1234, eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc, ' +
       'clave 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08; ' +
-      'URL https://ferro-properties.example.com/api/x?key=secreto',
+      'URL https://agencia-demo.example.com/api/x?key=secreto',
   );
   for (const bad of ['usuaria', 'alguien', 'claves', 'servidor', 'persona@', '612', 'ghp_', 'AIza', 'eyJ', '9f86d0', 'secreto', '/api/x'])
     assert.ok(!t.includes(bad), `debe quitar «${bad}»: ${t}`);
-  for (const good of ['[ruta]', '[correo]', '[teléfono]', '[token]', 'https://ferro-properties.example.com'])
+  for (const good of ['[ruta]', '[correo]', '[teléfono]', '[token]', 'https://agencia-demo.example.com'])
     assert.ok(t.includes(good), `debe dejar «${good}»: ${t}`);
   // Lo que no es secreto se queda: commits, versiones, recuentos.
   assert.equal(scrub('commit 6329a2c, versión 0.9.0, batería 150/0/28 y 37 pruebas'), 'commit 6329a2c, versión 0.9.0, batería 150/0/28 y 37 pruebas');
@@ -136,3 +136,5 @@ test('singular y plural en el reporte; aviso de opt-in en el idioma del proyecto
   const off = three({ on: false });
   assert.throws(() => logIncident({ root: off, me: 'mac', tipo: 'idea', texto: 'x' }), /Las incidencias están apagadas/);
 });
+
+// M25 (errores de wassup a la mantenedora) es de la Completa: sus pruebas, en completa-incidents.test.mjs.

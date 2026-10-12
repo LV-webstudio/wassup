@@ -14,7 +14,7 @@ Wassup collects **no data**. It has no server, no analytics and no telemetry, an
   (no e-mails, phone numbers, tokens or absolute paths), are deleted after 90 days, and are never sent: you
   decide whether to share a report, by hand.
 
-LV-Webstudio does not receive, store or process any information from people who use Wassup.
+Shania Webstudio does not receive, store or process any information from people who use Wassup.
 Questions: open an issue at https://github.com/LV-webstudio/wassup/issues
 
 ---
@@ -33,5 +33,5 @@ Wassup **no recoge ningún dato**. No tiene servidor, ni analítica, ni telemetr
   pasan un filtro (sin correos, teléfonos, tokens ni rutas absolutas), se borran a los 90 días y nunca se
   envían: compartir un reporte lo decides tú, a mano.
 
-LV-Webstudio no recibe, guarda ni trata ninguna información de quien usa Wassup.
+Shania Webstudio no recibe, guarda ni trata ninguna información de quien usa Wassup.
 Dudas: abre una *issue* en https://github.com/LV-webstudio/wassup/issues

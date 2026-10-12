@@ -1,5 +1,5 @@
 # Wassup · aviso nativo de Windows para Claude Code (sin instalar nada: API de notificaciones de Windows).
-# © 2026 LV-Webstudio (Speccy81) · MIT
+# © 2026 Shania Webstudio (Speccy81) · MIT
 #
 # Uso como hook de Claude Code (lee el JSON del evento por la entrada estándar):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File notify-windows.ps1

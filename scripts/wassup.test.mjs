@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ack, assist, closeAll, configure, markAssist, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError, idiomaDeSalida } from './wassup.mjs';
+import { esPrograma, ack, assist, closeAll, configure, markAssist, init, markReminded, parseAcks, parseMailbox, parseStamp, register, remind, replyNumbers, send, status, unread, wait, WassupError, idiomaDeSalida, pendingAnswers, show, stamp } from './wassup.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./wassup.mjs', import.meta.url));
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-'));
@@ -65,8 +65,8 @@ test('sin --commit no pone commit; con uno explícito, sí', () => {
   send({ root, from: 'pc', to: 'mac', subject: 'a', body: 'x', now: NOW });
   send({ root, from: 'pc', to: 'mac', subject: 'b', body: 'x', commit: 'abc1234', now: NOW });
   const t = fs.readFileSync(path.join(root, 'buzon', 'pc.md'), 'utf8');
-  assert.match(t, /^## #1 · 2026-09-28 21:45 · Para: mac$/m);
-  assert.match(t, /^## #2 · 2026-09-28 21:45 · commit abc1234 · Para: mac$/m);
+  assert.match(t, /^## #1 · 2026-09-28 21:45 [+-]\d{2}:\d{2} · Para: mac$/m);
+  assert.match(t, /^## #2 · 2026-09-28 21:45 [+-]\d{2}:\d{2} · commit abc1234 · Para: mac$/m);
 });
 
 test('send numera por remitente y deja el formato del buzón', () => {
@@ -76,8 +76,8 @@ test('send numera por remitente y deja el formato del buzón', () => {
   const c = send({ root, from: 'mac', to: 'pc', subject: 'Respuesta', body: 'Vale', commit: 'def5678', now: NOW });
   assert.deepEqual([a.n, b.n, c.n], [1, 2, 1]);
   const text = fs.readFileSync(path.join(root, 'buzon', 'pc.md'), 'utf8');
-  assert.match(text, /^## #1 · 2026-09-28 21:45 · commit abc1234 · Para: mac$/m);
-  assert.match(text, /^## #2 · 2026-09-28 21:45 · Para: todas$/m);
+  assert.match(text, /^## #1 · 2026-09-28 21:45 [+-]\d{2}:\d{2} · commit abc1234 · Para: mac$/m);
+  assert.match(text, /^## #2 · 2026-09-28 21:45 [+-]\d{2}:\d{2} · Para: todas$/m);
   assert.match(text, /^\*\*Espero de ti:\*\* nada$/m);
   const msgs = parseMailbox(text);
   assert.deepEqual(msgs.map((m) => [m.n, m.subject, m.commit]), [[1, 'Primero', 'abc1234'], [2, 'Segundo', null]]);
@@ -155,9 +155,9 @@ test('errores claros', () => {
 test('la línea de órdenes funciona de principio a fin', () => {
   const root = tmp();
   const run = (...a) => execFileSync(process.execPath, [SCRIPT, ...a], { encoding: 'utf8' });
-  run('init', '--root', root, '--name', 'pc');
+  run('init', '--root', root, '--name', 'pc', '--maquina', 'pc-pruebas');
   run('register', '--root', root, '--by', 'pc', '--name', 'mac');
-  run('init', '--root', root, '--name', 'mac', '--agent', 'mac-tests');
+  run('init', '--root', root, '--name', 'mac', '--agent', 'mac-tests', '--maquina', 'mac-pruebas');
   assert.match(run('send', '--root', root, '--from', 'pc', '--to', 'mac', '--subject', 'Hola', '--body', 'Prueba', '--commit', 'none'), /ok · #1/);
   assert.match(run('unread', '--root', root, '--me', 'mac'), /#1 · .* · Hola/);
   run('ack', '--root', root, '--me', 'mac', '--all');
@@ -173,7 +173,15 @@ test('los plugins llevan copias idénticas del script y del hook, y la misma ver
     const dir = entry.source.replace(/^\.\//, '');
     const skill = [dir, 'skills', 'wassup'];
     assert.ok(read(...skill, 'scripts', 'wassup.mjs').equals(read('scripts', 'wassup.mjs')), `${dir}: wassup.mjs`);
-    assert.ok(read(...skill, 'hooks', 'notify-windows.ps1').equals(read('hooks', 'notify-windows.ps1')), `${dir}: hook`);
+    // La Completa va al lado del núcleo cuando existe (rama main); la Básica no la lleva.
+    if (fs.existsSync(path.join(repo, 'scripts', 'wassup-completa.mjs')))
+      assert.ok(read(...skill, 'scripts', 'wassup-completa.mjs').equals(read('scripts', 'wassup-completa.mjs')), `${dir}: wassup-completa.mjs`);
+    for (const f of ['wassup-hooks.mjs', 'cuota.mjs', 'voz.mjs'])
+      assert.ok(read(...skill, 'scripts', f).equals(read('scripts', f)), `${dir}: ${f}`);
+    for (const f of ['a-claves-sendmessage.mjs', 'b-hora-sendmessage.mjs', 'c-acuse-recibido.mjs', 'd-ordenes-firma.mjs', 'comun.mjs'])
+      assert.ok(read(...skill, 'scripts', 'hooks', f).equals(read('scripts', 'hooks', f)), `${dir}: hooks/${f}`);
+    for (const f of ['notify-windows.ps1', 'instalar-cuota.sh', 'instalar-cuota.ps1'])
+      assert.ok(read(...skill, 'hooks', f).equals(read('hooks', f)), `${dir}: hook ${f}`);
     const manifest = JSON.parse(read(dir, '.claude-plugin', 'plugin.json'));
     assert.equal(manifest.name, entry.name);
     assert.equal(manifest.version, entry.version);
@@ -315,10 +323,101 @@ test('la salida de status, init y register va en el idioma del proyecto', () => 
   const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'wassup.mjs');
   const w = (args) => execFileSync(process.execPath, [SCRIPT, ...args], { stdio: 'pipe' }).toString();
   const es = tmp();
-  assert.match(w(['init', '--root', es, '--name', 'pc', '--lang', 'es']), /coordinadora: pc · sesiones: pc/);
+  assert.match(w(['init', '--root', es, '--name', 'pc', '--lang', 'es', '--maquina', 'pc-pruebas']), /máquina: pc-pruebas · coordinadora: pc · sesiones: pc/);
   assert.match(w(['register', '--root', es, '--by', 'pc', '--name', 'mac']), /^ok · sesiones: pc, mac/);
   assert.match(w(['status', '--root', es, '--me', 'pc']), /último #\d+ .*· sin leer \d+/);
   const en = tmp();
-  assert.match(w(['init', '--root', en, '--name', 'pc', '--lang', 'en']), /coordinator: pc · sessions: pc/);
+  assert.match(w(['init', '--root', en, '--name', 'pc', '--lang', 'en', '--maquina', 'pc-tests']), /machine: pc-tests · coordinator: pc · sessions: pc/);
   assert.match(w(['status', '--root', en, '--me', 'pc']), /last #\d+ .*· unread \d+/);
+});
+
+// ---------- 0.10, lote A: M26–M30, M35 ----------
+test('M35: la fecha lleva la zona horaria y parseStamp la respeta', () => {
+  assert.match(stamp(NOW), /^2026-09-28 21:45 [+-]\d{2}:\d{2}$/);
+  assert.equal(parseStamp('2026-09-28 21:45 +02:00').toISOString(), '2026-09-28T19:45:00.000Z');
+  assert.equal(parseStamp('2026-09-28 21:45 -03:00').toISOString(), '2026-09-29T00:45:00.000Z');
+  // Sin zona (buzones viejos): hora local, como antes.
+  assert.equal(parseStamp('2026-09-28 21:45').getHours(), 21);
+});
+
+test('M29/M30: send --re comprueba que el #N existe y marca leído hasta él', () => {
+  const root = three();
+  send({ root, from: 'mac', to: 'pc', subject: 'Pregunta', body: 'x', expect: 'respuesta' });
+  send({ root, from: 'mac', to: 'pc2', subject: 'Para otra', body: 'x' });
+  assert.throws(() => send({ root, from: 'pc', to: 'mac', subject: 'r', body: 'x', re: '9' }), /#9/);
+  assert.throws(() => send({ root, from: 'pc', to: 'mac', subject: 'r', body: 'x', re: '2' }), /#2/);
+  const r = send({ root, from: 'pc', to: 'mac', subject: 'Respuesta', body: 'x', re: '1' });
+  assert.deepEqual(r.reSubjects, [{ n: 1, from: 'mac', subject: 'Pregunta' }]);
+  assert.equal(parseAcks(fs.readFileSync(path.join(root, 'buzon', 'pc.md'), 'utf8')).mac, 1);
+  assert.deepEqual(unread({ root, me: 'pc' }), []);
+});
+
+test('M28: tras ack salen las preguntas leídas que siguen sin respuesta', () => {
+  const root = three();
+  send({ root, from: 'mac', to: 'pc', subject: 'Con pregunta', body: 'x', expect: 'un sí o un no' });
+  send({ root, from: 'mac', to: 'pc', subject: 'Solo aviso', body: 'x' });
+  ack({ root, me: 'pc', all: true });
+  assert.deepEqual(pendingAnswers({ root, me: 'pc' }), [{ from: 'mac', n: 1, subject: 'Con pregunta', expect: 'un sí o un no' }]);
+  send({ root, from: 'pc', to: 'mac', subject: 'Sí', body: 'x', re: '1' });
+  assert.deepEqual(pendingAnswers({ root, me: 'pc' }), []);
+});
+
+test('M26/M27: la línea para el directo, unread --resumen y show por la línea de órdenes', () => {
+  const root = tmp();
+  const run = (...a) => execFileSync(process.execPath, [SCRIPT, ...a], { encoding: 'utf8' });
+  run('init', '--root', root, '--name', 'pc', '--maquina', 'pc-pruebas');
+  run('register', '--root', root, '--by', 'pc', '--name', 'mac');
+  run('init', '--root', root, '--name', 'mac', '--maquina', 'mac-pruebas');
+  const out = run('send', '--root', root, '--from', 'pc', '--to', 'mac', '--subject', 'Hola', '--body', 'Cuerpo de prueba', '--expect', 'ok');
+  assert.match(out, /^para el aviso directo: pc#1 en el buzón: Hola$/m);
+  assert.match(run('unread', '--root', root, '--me', 'mac', '--resumen'), /^pc#1 · .* · Hola$/m);
+  const s = run('show', '--root', root, '--de', 'pc', '--num', '1');
+  assert.match(s, /^## pc#1 · /);
+  assert.match(s, /Cuerpo de prueba/);
+  assert.match(run('ack', '--root', root, '--me', 'mac', '--all'), /pendiente de contestar: pc#1 Hola · espera: ok/);
+  const r = run('send', '--root', root, '--from', 'mac', '--to', 'pc', '--subject', 'Ok', '--body', 'hecho', '--re', '1');
+  assert.match(r, /responde a #1: Hola/);
+  assert.doesNotMatch(run('ack', '--root', root, '--me', 'mac', '--all'), /pendiente/);
+  assert.throws(() => run('show', '--root', root, '--de', 'pc', '--num', '7'), /No hay #7/);
+});
+
+test('la línea de órdenes arranca aunque se llame por un enlace simbólico o una unión (macOS /var → /private/var)', (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wassup-enlace-'));
+  const enlace = path.join(tmp, 'scripts');
+  try {
+    try {
+      fs.symlinkSync(path.dirname(SCRIPT), enlace, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      t.skip('este sistema no deja crear enlaces');
+      return;
+    }
+    const out = execFileSync(process.execPath, [path.join(enlace, 'wassup.mjs'), '--version'], { encoding: 'utf8' });
+    assert.match(out, /\d+\.\d+\.\d+/, 'por el enlace, --version tiene que imprimir la versión');
+    assert.equal(esPrograma(path.join(enlace, 'wassup.mjs'), new URL('./wassup.mjs', import.meta.url).href), true);
+    assert.equal(esPrograma(path.join(tmp, 'otro.mjs'), new URL('./wassup.mjs', import.meta.url).href), false);
+    assert.equal(esPrograma(undefined, new URL('./wassup.mjs', import.meta.url).href), false);
+  } finally {
+    // Primero el enlace (sin seguirlo) y después la carpeta: nunca se borra nada del destino.
+    try {
+      fs.unlinkSync(enlace);
+    } catch {
+      try {
+        fs.rmdirSync(enlace);
+      } catch {
+        /* no llegó a crearse */
+      }
+    }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('B-12x · una sesión registrada que aún no ha hecho init: unread no revienta y status cuenta lo que le espera', () => {
+  const root = three();
+  register({ root, by: 'pc', name: 'nueva' });
+  for (let i = 0; i < 3; i++) send({ root, from: 'mac', to: 'nueva', subject: `m${i}`, body: 'x' });
+  send({ root, from: 'pc', to: 'all', subject: 'a todas', body: 'x' });
+  const u = unread({ root, me: 'nueva' });
+  assert.equal(u.reduce((k, x) => k + x.messages.length, 0), 4);
+  assert.equal(status({ root }).find((x) => x.session === 'nueva').unread, 4);
+  assert.throws(() => unread({ root, me: 'nadie' }), /no está registrada|not registered/);
 });
