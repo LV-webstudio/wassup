@@ -22,8 +22,8 @@ It came out of a real project: a PC with 8 GB of RAM writing code, and a Mac run
 test suite the PC could not fit in memory.
 
 ## Status
-Version 0.8.1 · packaged as a Claude Code plugin · field-tested with **three sessions on two machines**
-(Windows 11 + macOS 13), 15 automated tests.
+Latest released version: 0.12.1 (see the [changelog](CHANGELOG.md); 0.13.0 is in preparation) · packaged as a Claude Code plugin ·
+field-tested with several sessions on more than one machine (Windows 11 and macOS).
 
 ## Install
 **As a plugin** (recommended; updates with `claude plugin update`). This repository is its own marketplace:
@@ -97,6 +97,9 @@ write nothing.
 ## Who makes it
 Wassup is made by **[Shania Webstudio](https://shaniawebstudio.com)** (Speccy81™), a web and AI studio. Issues and
 ideas are welcome on GitHub.
+
+- Email: hola@shaniawebstudio.com
+- Website: https://shaniawebstudio.com
 
 ## Trademarks
 
