@@ -1,4 +1,4 @@
-# Wassup™
+# Wassup™ — coordina varias sesiones de Claude Code en varias máquinas
 
 ![Wassup: sesiones de Claude Code que se hablan entre ellas](https://raw.githubusercontent.com/LV-webstudio/wassup/main/assets/banner.jpg)
 
